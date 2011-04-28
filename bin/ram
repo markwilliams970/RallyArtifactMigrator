@@ -1,0 +1,66 @@
+#!/usr/bin/env ruby
+
+require 'trollop'
+
+ARGV << "--help" if ARGV.size == 0
+
+opts = Trollop::options do
+	version "Rally Artifact Migrator 0.2.0"
+	banner <<-EOS
+Rally Artifact Migrator is a utility for migrating Rally artifacts from one project to another
+
+Usage:
+	Usage: ram <config_file> [options]
+where [options] are:
+EOS
+	opt :all, "Verifies configuration, exports and imports the artifacts", :default => false
+	opt :skip_verification, "Skips verification of the configuration file", :default => false
+	opt :export, "Exports the source environment", :default => false
+	opt :import, "Imports the artifacts into the target environment", :default => false
+	opt :example_configuration, "Generate an example configuration file", :type => :string
+end
+
+require 'ram' unless opts[:help]
+
+unless opts[:example_configuration]
+	config_file = ARGV[0]
+
+	begin
+		instance_eval File.read(config_file)
+
+		valid = true
+		valid &&= ArtifactMigration::Validator.verify unless opts[:skip_verification]
+	
+		if valid
+			begin
+				ArtifactMigration::Exporter.run if opts[:all] or opts[:export]
+
+				begin
+					ArtifactMigration::Importer.run if opts[:all] or opts[:import]
+				rescue Exception => ie
+					ArtifactMigration::Logger.debug ie
+					puts ie
+					puts "Issues occured during the import process."
+				end
+				
+			rescue Exception => ee
+				ArtifactMigration::Logger.debug ee
+				puts ee
+				puts "Issues occured during the export process."
+			end
+		else
+			puts "Errors were found in the config file."
+		end
+	rescue Exception => ce
+		ArtifactMigration::Logger.debug ce
+		puts ce
+		puts "Errors were found in the config file."
+	end
+	
+else
+	out = File.open(opts[:example_configuration], 'w')
+	out << File.read(File.join(File.dirname(__FILE__), '..', 'example_config.rb'))
+	out.close
+	puts "#{opts[:example_configuration]} has been created!"
+end
+
