@@ -1,16 +1,49 @@
-= ram
+= Rally Artifact Migration
 
-Description goes here.
+Rally Artifact Migration utility.
+
+== Installation Instructions
+
+=== Mac OS X
+
+* Install Xcode (for compiling SQLite3)
+* From the command line type: sudo gem install ram-0.2.2.gem --no-rdoc --no-ri
+
+=== Ubuntu
+
+* Install GCC (for compiling SQLite3)
+* sudo apt-get install libsqlite3-dev
+* sudo gem install ram-0.2.2.gem --no-rdoc --no-ri
+
+=== Windows
+
+* Not sure about prereqs, but you need to be able to install SQLite3
+* From the command line type: gem install ram-0.2.2.gem --no-rdoc --no-ri
+
+== Release Notes
+
+=== 0.2.2
+
+* [BUG] RQM not detected
+* [BUG] ArtifactMigration::Version string not used in X-RallyIntegration-Version header
+
+=== 0.2.1
+
+* [FEATURE] Uses X-RallyIntegration-* headers for integration tracking
+* [BUG] Arrays serialized with to_s instead of to_json
+
+=== 0.2.0
+
+* [FEATURE] Added ability to migrate Test Sets
+
+=== 0.1.0
+
+Initial release.  Can migrate most types of artifacts from one project to another.
+
 
 == Contributing to ram
  
-* Check out the latest master to make sure the feature hasn't been implemented or the bug hasn't been fixed yet
-* Check out the issue tracker to make sure someone already hasn't requested it and/or contributed it
-* Fork the project
-* Start a feature/bugfix branch
-* Commit and push until you are happy with your contribution
-* Make sure to add tests for it. This is important so I don't break it in a future version unintentionally.
-* Please try not to mess with the Rakefile, version, or history. If you want to have your own version, or is otherwise necessary, that is fine, but please isolate to its own commit so I can cherry-pick around it.
+* Email Colin (cobrien@rallydev.com)
 
 == Copyright
 

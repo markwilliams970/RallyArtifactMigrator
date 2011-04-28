@@ -28,6 +28,8 @@ Jeweler::Tasks.new do |gem|
 	
 	gem.files.include 'example_config.rb'
 	gem.files.include Dir.glob('lib/**/*.rb')
+	gem.files.include 'VERSION'
+	
 	gem.executables = ['ram']
   #gem.add_development_dependency 'rspec', '> 1.2.3'
 end
@@ -38,6 +40,16 @@ Rake::TestTask.new(:test) do |test|
   test.libs << 'lib' << 'test'
   test.pattern = 'test/**/test_*.rb'
   test.verbose = true
+end
+
+require 'rake/packagetask'
+version = File.exist?('VERSION') ? File.read('VERSION') : ""
+Rake::PackageTask.new('ram', version) do |p|
+	p.need_tar_gz = true
+	
+	p.package_files.include "lib/**/*.rb"
+	p.package_files.include "example_config.rb"
+	p.package_files.include "VERSION"
 end
 
 require 'rcov/rcovtask'

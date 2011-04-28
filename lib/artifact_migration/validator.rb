@@ -80,7 +80,8 @@ module ArtifactMigration
 			
 			@@rally = RallyRestAPI.new :username => config.username, :password => config.password, :base_url => config.server, :version => ArtifactMigration::RALLY_API_VERSION, :http_headers => ArtifactMigration::INTEGRATION_HEADER
 			valid &&= assert("Validating user is authenticated") { !@@rally.user.nil? }
-			valid &&= assert("Validating subscription has Rally Quality Manager enabled") { @@rally.user.subscription.modules =~ /Quality/ } if (config.migration_types.include? :test_folder) or (config.migration_types.include? :test_set)
+			
+			valid &&= assert("Validating subscription has Rally Quality Manager enabled") { not (@@rally.user.subscription.modules.to_s =~ /Quality/).nil? } if (config.migration_types.include? :test_folder) or (config.migration_types.include? :test_set)
 
 			ws = ArtifactMigration::Helper.find_workspace(@@rally, config.workspace_oid)
 			valid &&= assert("Validating a workspace was found") { !ws.nil? }

@@ -34,9 +34,9 @@ module ArtifactMigration
 				:headers => { 
 					:authorization => "Basic #{enc_password}",
 					:accept => '*/*; application/javascript',
-					:"X-RallyIntegration-Name" => 'Rally Artifact Migrator',
-					:"X-RallyIntegration-Version" => '0.2.0',
-					:"X-RallyIntegration-Vendor" => 'Rally Software'
+					:rallyIntegration_name => 'Rally Artifact Migrator',
+					:rallyIntegration_version => ArtifactMigration::VERSION,
+					:rallyIntegration_vendor => 'Rally Software'
 				})
 			
 			query = "/#{opts[:type].to_s.sub('_', '')}?query=(ObjectID > 0)&fetch=ObjectID,"

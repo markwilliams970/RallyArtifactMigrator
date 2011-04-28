@@ -15,10 +15,12 @@ module ArtifactMigration
 	
 	RALLY_API_VERSION = "1.23"
 	
+	VERSION = File.read(File.join(File.dirname(__FILE__), '..', 'VERSION'))
+	
 	INTEGRATION_HEADER = CustomHttpHeader.new
 	INTEGRATION_HEADER.vendor = "Rally Software"
 	INTEGRATION_HEADER.name = "Rally Artifact Migrator"
-	INTEGRATION_HEADER.version = "0.2.0"
+	INTEGRATION_HEADER.version = ArtifactMigration::VERSION
 
 	eager_autoload do
 		autoload :ConfigurationDefinition
