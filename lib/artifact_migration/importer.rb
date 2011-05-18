@@ -32,8 +32,8 @@ module ArtifactMigration
 				#fix_test_sets if config.migration_types.include?(type) and type == :test_set
 			end
 			
-			import_attachments if config.migrate_attachments_flag
 			update_artifact_statuses
+			import_attachments if config.migrate_attachments_flag
 		end
 		
 		protected
@@ -317,6 +317,18 @@ module ArtifactMigration
 		end
 		
 		def self.import_attachments
+			Logger.info "Importing Attachments"
+			
+			Logger.debug "Switching Workspaces to OID #{@@workspace}"
+			prefs = @@rally_ds.user.user_profile
+			
+			old_ws = prefs.default_workspace
+			old_p = prefs.default_project
+		
+			Logger.debug "Old Default Workspace #{old_ws}/#{old_p}"
+			prefs.update(:default_workspace => @@workspace)
+			Logger.debug "New Default Workspace #{prefs.default_workspace}/#{prefs.default_project}"
+			
 			config = Configuration.singleton.target_config
 			token = get_rally_security_token
 			attachment_new_url = "ax/newAttachment.sp"
@@ -324,10 +336,9 @@ module ArtifactMigration
 
 			client = RestClient::Resource.new("#{config.server}", :verify_ssl => false, :headers => {'Cookie' => token})
 			
-			Logger.debug "Switching Workspaces to OID #{config.workspace_oid}"
 			res = client['switchWorkspace.sp'].post("wOid=#{config.workspace_oid}")
-			Logger.debug res
-			
+			#Logger.debug res
+						
 			ArtifactMigration::Attachment.all.each do |attachment|
 				source_aid = attachment.artifact_i_d
 				target_aid = @@object_manager.get_mapped_artifact source_aid
@@ -338,14 +349,23 @@ module ArtifactMigration
 				file_name = File.join('Attachments', "#{source_aid}", "#{att_id}")
 				Logger.debug "Begin upload for #{file_name} || #{target_aid.object_i_d}"
 				
-				client["#{attachment_new_url}?oid=#{target_aid.object_i_d}"].get
+				#client["#{attachment_new_url}?oid=#{target_aid.object_i_d}"].get
 				res = client[attachment_create_url].post(:fileName => attachment.name, :file => File.new(File.join('Attachments', "#{source_aid}", "#{att_id}"), 'rb'), :oid => target_aid.object_i_d, :enclosure => attachment.description)
 				
-				Logger.debug res
-				Logger.info "Uploaded Attachment #{attachment.name} for Artifact #{target_aid}"
-				ImportTransactionLog.create(:object_i_d => att_id, :transaction_type => 'import')
+				Logger.debug res.body
+				Logger.debug (res.body.include? %q(<body onload="if(window.opener){window.opener.setTimeout('refreshWindow()', 0);}window.close();"></body>))
+				
+				success = res.body.include? %q(<body onload="if(window.opener){window.opener.setTimeout('refreshWindow()', 0);}window.close();"></body>)
+				
+				if success
+					Logger.info "Uploaded Attachment #{attachment.name} for Artifact #{target_aid}"
+					ImportTransactionLog.create(:object_i_d => att_id, :transaction_type => 'import')
+				else
+					Logger.info "FAILED to upload Attachment #{attachment.name} for Artifact #{target_aid}"
+				end
 			end
 			
+			prefs.update(:default_workspace => old_ws, :default_project => old_p)
 		end
 
 		def self.fix_test_sets

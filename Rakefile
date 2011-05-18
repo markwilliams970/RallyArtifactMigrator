@@ -13,7 +13,7 @@ require 'jeweler'
 Jeweler::Tasks.new do |gem|
   # gem is a Gem::Specification... see http://docs.rubygems.org/read/chapter/20 for more options
   gem.name = "ram"
-  #gem.homepage = "http://github.com/Echo3ToEcho7/ram"
+  gem.homepage = "https://sites.google.com/a/rallydev.com/the-wrack-zone/home/ruby-scripts"
   #gem.license = "MIT"
   gem.summary = %Q{Utility to Migrate Rally Artifacts}
   gem.description = %Q{Utility to Migrate Rally Artifacts}
