@@ -1,4 +1,6 @@
 require 'active_support/inflector'
+require 'base64'
+require 'rally_rest_api'
 
 module ArtifactMigration
 	class Exporter
@@ -6,9 +8,16 @@ module ArtifactMigration
 			prepare
 						
 			c = Configuration.singleton.source_config
+			
+			@@rally_ds = RallyRestAPI.new :username => c.username, :password => c.password, :base_url => c.server, :version => ArtifactMigration::RALLY_API_VERSION, :http_headers => ArtifactMigration::INTEGRATION_HEADER
+			
 			[:tag, :release, :iteration, :hierarchical_requirement, :test_folder, :test_case, :test_case_step, :test_set, :test_case_result, :defect, :defect_suite, :task].each do |type|
 				export_type type if c.migration_types.include? type
 			end
+			
+			@@workspace = Helper.find_workspace(@@rally_ds, c.workspace_oid)
+			
+			export_attachments if c.migrate_attachments_flag
 			
 #			export_type :release
 		end
@@ -18,6 +27,7 @@ module ArtifactMigration
 			
 			Schema.create_artifact_schemas
 			Schema.create_object_type_map_schema
+			Schema.create_attachment_scheme
 			
 			attrs = {}
 			@@rw_attrs = {}
@@ -111,6 +121,70 @@ module ArtifactMigration
 					ObjectTypeMap.create(:object_i_d => artifact.object_i_d, :artifact_type => type.to_s) if artifact and ObjectTypeMap.find_by_object_i_d(artifact.object_i_d).nil?
 					
 					Logger.debug(artifact.attributes) if artifact
+				end
+			end
+		end
+	
+		def self.export_attachments
+			Logger.info("Exporting Attachments")
+
+			c = Configuration.singleton.source_config
+
+			c.project_oids.each do |poid|
+				Logger.info("Exporting Attachments for Project OID [#{poid}]")
+				
+				ret = Helper.batch_toolkit :url => c.server,
+					:username => c.username,
+					:password => c.password,
+					:version => ArtifactMigration::RALLY_API_VERSION,
+					:workspace => c.workspace_oid,
+					:project => poid,
+					:project_scope_up => c.project_scope_up,
+					:project_scope_down => c.project_scope_down,
+					:type => :artifact,
+					:fields => %w(ObjectID Attachments Name).to_set
+
+				project = Helper.find_project(@@rally_ds, @@workspace, poid) if ret["Results"].size > 0
+				
+				ret["Results"].each do |art|
+					if (art['Attachments'] and (art['Attachments'].size > 0))
+						Logger.info "#{art['Name']} [#{art['ObjectID']}] has #{art['Attachments'].size} Attachments"
+					
+						artifact_res = @@rally_ds.find(:artifact, :project => project, :project_scope_up => false, :project_scope_down => false) { equal :object_i_d, art['ObjectID'] }
+						artifact = artifact_res.results.first
+
+						if artifact.attachments
+
+							artifact.attachments.each do |attachment|
+								Logger.info "\tAttachment: #{attachment.name}"
+
+								Dir::mkdir('Attachments') unless File.exists?('Attachments')
+								Dir::mkdir(File.join('Attachments', artifact.object_i_d)) unless File.exist?(File.join('Attachments', artifact.object_i_d))
+
+								File.open(File.join('Attachments', artifact.object_i_d, attachment.object_i_d), "w") do |f|
+									begin
+										f.write(Base64.decode64(attachment.content.content))
+									
+										attrs = {
+											:object_i_d => attachment.object_i_d,
+											:name => attachment.name,
+											:description => attachment.description, 
+											:user_name => attachment.user.user_name,
+											:artifact_i_d => artifact.object_i_d
+										}
+										
+										Attachment.create(attrs) unless Attachment.find_by_object_i_d(attachment.object_i_d)
+										ObjectTypeMap.create(:object_i_d => attachment.object_i_d, :artifact_type => 'attachment') if attachment and ObjectTypeMap.find_by_object_i_d(attachment.object_i_d).nil?
+									
+									rescue EOFError => e
+										f.rewind
+										Logger.debug "Error saving file, retrying..."
+										retry
+									end
+								end unless File.exists? File.join('Attachments', artifact.object_i_d, attachment.object_i_d)
+							end
+						end
+					end
 				end
 			end
 		end

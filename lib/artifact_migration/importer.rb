@@ -1,6 +1,8 @@
 require 'active_support/inflector'
 require 'rally_rest_api'
 require 'json'
+require 'net/http'
+require 'net/https'
 
 module ArtifactMigration
 	class Importer
@@ -30,6 +32,7 @@ module ArtifactMigration
 				#fix_test_sets if config.migration_types.include?(type) and type == :test_set
 			end
 			
+			import_attachments if config.migrate_attachments_flag
 			update_artifact_statuses
 		end
 		
@@ -312,6 +315,38 @@ module ArtifactMigration
 				end
 			end
 		end
+		
+		def self.import_attachments
+			config = Configuration.singleton.target_config
+			token = get_rally_security_token
+			attachment_new_url = "ax/newAttachment.sp"
+			attachment_create_url = "ax/create.sp"
+
+			client = RestClient::Resource.new("#{config.server}", :verify_ssl => false, :headers => {'Cookie' => token})
+			
+			Logger.debug "Switching Workspaces to OID #{config.workspace_oid}"
+			res = client['switchWorkspace.sp'].post("wOid=#{config.workspace_oid}")
+			Logger.debug res
+			
+			ArtifactMigration::Attachment.all.each do |attachment|
+				source_aid = attachment.artifact_i_d
+				target_aid = @@object_manager.get_mapped_artifact source_aid
+				att_id = attachment.object_i_d
+				
+				next if ImportTransactionLog.readonly.where("object_i_d = ? AND transaction_type = ?", att_id, 'import').exists?
+				
+				file_name = File.join('Attachments', "#{source_aid}", "#{att_id}")
+				Logger.debug "Begin upload for #{file_name} || #{target_aid.object_i_d}"
+				
+				client["#{attachment_new_url}?oid=#{target_aid.object_i_d}"].get
+				res = client[attachment_create_url].post(:fileName => attachment.name, :file => File.new(File.join('Attachments', "#{source_aid}", "#{att_id}"), 'rb'), :oid => target_aid.object_i_d, :enclosure => attachment.description)
+				
+				Logger.debug res
+				Logger.info "Uploaded Attachment #{attachment.name} for Artifact #{target_aid}"
+				ImportTransactionLog.create(:object_i_d => att_id, :transaction_type => 'import')
+			end
+			
+		end
 
 		def self.fix_test_sets
 			ArtifactMigration::RallyArtifacts::TestSet.all.each do |test_set|
@@ -341,6 +376,36 @@ module ArtifactMigration
 					target.update(:test_cases => test_cases)
 				end
 			end
+		end
+		
+		private
+		def self.get_rally_security_token
+			config = Configuration.singleton.target_config
+			security_url = "platform/j_platform_security_check.op"
+			
+			uri = URI.parse(config.server)
+			http = Net::HTTP.new(uri.host, 443)
+			http.use_ssl = true
+
+			data = "j_username=#{config.username}&j_password=#{config.password}"
+			headers = {}
+
+			Logger.debug "Phase 1 Security Authorization - #{uri.path}/#{security_url}"
+			res = http.post2 "#{uri.path}/#{security_url}", data, headers
+			Logger.debug "Status Code: #{res.code}"
+
+			cookie = res['set-cookie']
+
+			uri = URI.parse(res['location'])
+			#puts uri.path
+			headers['Cookie'] = cookie
+
+			Logger.debug "Phase 2 Security Authorization - #{uri.path}"
+			res = http.post2 uri.path, 'jsonp=&jsonOnly=', headers
+			Logger.debug "Status Code: #{res.code}"
+
+			Logger.debug "Token -- #{cookie}"
+			cookie
 		end
 
 	end # Class

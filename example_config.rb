@@ -18,6 +18,7 @@ ArtifactMigration::Configuration.define do |config|
 		source.add_project_oid 729727
 		
 		source.migrate_all_types # Exports all types to the intermediate database
+		source.migrate_attachments
 		
 		[:hierarchical_requirement, :defect, :defect_suite, :test_case].each { |type| source.ignore_field type, :package }
 		
@@ -36,6 +37,7 @@ ArtifactMigration::Configuration.define do |config|
 		target.map_project_oid :from => 729727, :to => 44444444
 		
 		target.migrate_typical_types # Typical types do not include RQM Types (Test Folder, Test Set, ect.)
+		target.migrate_attachments
 		
 
 =begin

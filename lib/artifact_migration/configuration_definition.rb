@@ -23,6 +23,7 @@ module ArtifactMigration
 		attr_reader :ignore_fields
 		attr_reader :field_mapping
 		attr_reader :username_mapping
+		attr_reader :migrate_attachments_flag
 		
 		def initialize
 			@project_oids = [].to_set
@@ -62,6 +63,10 @@ module ArtifactMigration
 		
 		def migrate_all_types
 			ArtifactMigration::VALID_TYPES.each { |t| migrate_type t }
+		end
+		
+		def migrate_attachments
+			@migrate_attachments_flag = true
 		end
 		
 		def map_project_oid(options = {})

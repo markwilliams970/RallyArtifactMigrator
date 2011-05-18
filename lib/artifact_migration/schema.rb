@@ -64,6 +64,9 @@ module ArtifactMigration
 				ActiveRecord::Migration.verbose = false
 				
 				ArtifactMigration::RallyArtifacts.constants.each do |c|
+					next if c == :Attachment
+					
+					Logger.debug "Creating schema for #{c}"
 					klass = ArtifactMigration::RallyArtifacts.const_get(c)
 					
 					unless klass.table_exists?
@@ -78,6 +81,22 @@ module ArtifactMigration
 					#Logger.debug "#{c.to_s}'s primary key is: #{klass.primary_key}"
 					
 				end
+			end
+		end
+		
+		def self.create_attachment_scheme
+			ActiveRecord::Schema.define do
+				ActiveRecord::Migration.verbose = false
+				
+				create_table :attachments, :id => false, :force => true do |t|
+					t.column :object_i_d, :integer
+					t.column :artifact_i_d, :integer
+					t.column :name, :string
+					t.column :description, :text
+					t.column :user_name, :string
+				end
+				
+				add_index :attachments, :object_i_d, :unique => true
 			end
 		end
 		

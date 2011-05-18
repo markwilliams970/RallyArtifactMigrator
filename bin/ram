@@ -20,47 +20,48 @@ EOS
 	opt :example_configuration, "Generate an example configuration file", :type => :string
 end
 
-require 'ram' unless opts[:help]
+unless opts[:help]
+	require 'ram'
 
-unless opts[:example_configuration]
-	config_file = ARGV[0]
+	unless opts[:example_configuration]
+		config_file = ARGV[0]
 
-	begin
-		instance_eval File.read(config_file)
+		begin
+			instance_eval File.read(config_file)
 
-		valid = true
-		valid &&= ArtifactMigration::Validator.verify unless opts[:skip_verification]
+			valid = true
+			valid &&= ArtifactMigration::Validator.verify unless opts[:skip_verification]
 	
-		if valid
-			begin
-				ArtifactMigration::Exporter.run if opts[:all] or opts[:export]
-
+			if valid
 				begin
-					ArtifactMigration::Importer.run if opts[:all] or opts[:import]
-				rescue Exception => ie
-					ArtifactMigration::Logger.debug ie
-					puts ie
-					puts "Issues occured during the import process."
-				end
+					ArtifactMigration::Exporter.run if opts[:all] or opts[:export]
+
+					begin
+						ArtifactMigration::Importer.run if opts[:all] or opts[:import]
+					rescue Exception => ie
+						ArtifactMigration::Logger.debug ie
+						puts ie
+						puts "Issues occured during the import process."
+					end
 				
-			rescue Exception => ee
-				ArtifactMigration::Logger.debug ee
-				puts ee
-				puts "Issues occured during the export process."
+				rescue Exception => ee
+					ArtifactMigration::Logger.debug ee
+					puts ee
+					puts "Issues occured during the export process."
+				end
+			else
+				puts "Errors were found in the config file."
 			end
-		else
+		rescue Exception => ce
+			ArtifactMigration::Logger.debug ce
+			puts ce
 			puts "Errors were found in the config file."
 		end
-	rescue Exception => ce
-		ArtifactMigration::Logger.debug ce
-		puts ce
-		puts "Errors were found in the config file."
-	end
 	
-else
-	out = File.open(opts[:example_configuration], 'w')
-	out << File.read(File.join(File.dirname(__FILE__), '..', 'example_config.rb'))
-	out.close
-	puts "#{opts[:example_configuration]} has been created!"
+	else
+		out = File.open(opts[:example_configuration], 'w')
+		out << File.read(File.join(File.dirname(__FILE__), '..', 'example_config.rb'))
+		out.close
+		puts "#{opts[:example_configuration]} has been created!"
+	end
 end
-

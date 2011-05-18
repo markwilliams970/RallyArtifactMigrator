@@ -2,7 +2,10 @@ require 'active_record'
 require 'active_support/inflector'
 
 module ArtifactMigration
-	module RallyArtifacts
+	class Attachment < ActiveRecord::Base
+	end
+
+	module RallyArtifacts		
 		def self.create_artifact_classes
 			ArtifactMigration::VALID_TYPES.each do |type|
 				klass = ArtifactMigration::RallyArtifacts.const_set(type.to_s.classify, Class.new(ActiveRecord::Base))

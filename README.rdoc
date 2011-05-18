@@ -7,20 +7,25 @@ Rally Artifact Migration utility.
 === Mac OS X
 
 * Install Xcode (for compiling SQLite3)
-* From the command line type: sudo gem install ram-0.2.2.gem --no-rdoc --no-ri
+* From the command line type: sudo gem install ram-0.3.0.gem --no-rdoc --no-ri
 
 === Ubuntu
 
 * Install GCC (for compiling SQLite3)
 * sudo apt-get install libsqlite3-dev
-* sudo gem install ram-0.2.2.gem --no-rdoc --no-ri
+* sudo gem install ram-0.3.0.gem --no-rdoc --no-ri
 
 === Windows
 
 * Not sure about prereqs, but you need to be able to install SQLite3
-* From the command line type: gem install ram-0.2.2.gem --no-rdoc --no-ri
+* From the command line type: gem install ram-0.3.0.gem --no-rdoc --no-ri
 
 == Release Notes
+
+=== 0.3.0
+
+* [FEATURE] Export Attachments
+* [FEATURE] Import Attachments
 
 === 0.2.2
 
