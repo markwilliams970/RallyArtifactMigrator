@@ -23,7 +23,16 @@ module ArtifactMigration
 	INTEGRATION_HEADER.version = ArtifactMigration::VERSION
 
 	eager_autoload do
-		autoload :ConfigurationDefinition
+		autoload_under 'configuration_definitions' do
+			autoload :RallyConfigDefinition
+			autoload :TargetConfigDefinition
+			autoload :SourceConfigDefinition
+		end
+		
+		autload_under 'exporters' do
+			autoload :RallyExporter
+		end
+		
 		autoload :Configuration
 		autoload :Validator
 		autoload :Runner

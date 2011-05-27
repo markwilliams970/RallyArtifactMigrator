@@ -13,27 +13,27 @@ module ArtifactMigration
 			
 			config = Configuration.singleton.target_config
 			
-			@@rally_ds = RallyRestAPI.new :username => config.username, :password => config.password, :base_url => config.server, :version => ArtifactMigration::RALLY_API_VERSION, :http_headers => ArtifactMigration::INTEGRATION_HEADER
-			@@workspace = Helper.find_workspace @@rally_ds, config.workspace_oid
+			@@rally_ds = RallyRestAPI.new :username => config.rally.username, :password => config.rally.password, :base_url => config.rally.server, :version => ArtifactMigration::RALLY_API_VERSION, :http_headers => ArtifactMigration::INTEGRATION_HEADER
+			@@workspace = Helper.find_workspace @@rally_ds, config.rally.workspace_oid
 			@@projects = {}
 			@@user_cache = {}
 			
 			@@object_manager = ObjectManager.new @@rally_ds, @@workspace
 			
 			[:tag, :release, :iteration, :hierarchical_requirement, :test_folder, :test_case, :test_case_step, :test_set, :test_case_result, :defect, :defect_suite, :task].each do |type|
-				Logger.info "Importing #{type.to_s.humanize}" if config.migration_types.include? type
+				Logger.info "Importing #{type.to_s.humanize}" if config.rally.migration_types.include? type
 				
-				import_type type if config.migration_types.include? type
+				import_type type if config.rally.migration_types.include? type
 				
-				update_story_parents if config.migration_types.include?(type) and type == :hierarchical_requirement
-				update_story_predecessors if config.migration_types.include?(type) and type == :hierarchical_requirement
-				update_defect_duplicates if config.migration_types.include?(type) and type == :defect
-				update_test_folder_parents if config.migration_types.include?(type) and type == :test_folder
+				update_story_parents if config.rally.migration_types.include?(type) and type == :hierarchical_requirement
+				update_story_predecessors if config.rally.migration_types.include?(type) and type == :hierarchical_requirement
+				update_defect_duplicates if config.rally.migration_types.include?(type) and type == :defect
+				update_test_folder_parents if config.rally.migration_types.include?(type) and type == :test_folder
 				#fix_test_sets if config.migration_types.include?(type) and type == :test_set
 			end
 			
 			update_artifact_statuses
-			import_attachments if config.migrate_attachments_flag
+			import_attachments if config.rally.migrate_attachments_flag
 		end
 		
 		protected
@@ -233,10 +233,10 @@ module ArtifactMigration
 			config = Configuration.singleton.target_config
 			
 			[:hierarchical_requirement, :defect, :defect_suite].reverse.each do |type|
-				Logger.info "Updating statuses for #{type.to_s.humanize}" if config.migration_types.include? type
+				Logger.info "Updating statuses for #{type.to_s.humanize}" if config.rally.migration_types.include? type
 				
 				klass = ArtifactMigration::RallyArtifacts.get_artifact_class(type)
-				c = Configuration.singleton.source_config
+				#c = Configuration.singleton.source_config
 				Logger.debug "Klass = #{klass}"
 
 				klass.all.each do |obj|
@@ -334,9 +334,9 @@ module ArtifactMigration
 			attachment_new_url = "ax/newAttachment.sp"
 			attachment_create_url = "ax/create.sp"
 
-			client = RestClient::Resource.new("#{config.server}", :verify_ssl => false, :headers => {'Cookie' => token})
+			client = RestClient::Resource.new("#{config.rally.server}", :verify_ssl => false, :headers => {'Cookie' => token})
 			
-			res = client['switchWorkspace.sp'].post("wOid=#{config.workspace_oid}")
+			res = client['switchWorkspace.sp'].post("wOid=#{config.rally.workspace_oid}")
 			#Logger.debug res
 						
 			ArtifactMigration::Attachment.all.each do |attachment|
@@ -407,7 +407,7 @@ module ArtifactMigration
 			http = Net::HTTP.new(uri.host, 443)
 			http.use_ssl = true
 
-			data = "j_username=#{config.username}&j_password=#{config.password}"
+			data = "j_username=#{config.rally.username}&j_password=#{config.rally.password}"
 			headers = {}
 
 			Logger.debug "Phase 1 Security Authorization - #{uri.path}/#{security_url}"
