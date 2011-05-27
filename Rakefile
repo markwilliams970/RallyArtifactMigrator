@@ -22,9 +22,11 @@ Jeweler::Tasks.new do |gem|
   # Include your dependencies below. Runtime dependencies are required when using your gem,
   # and development dependencies are only needed for development (ie running rake tasks, tests, etc)
 	
-	['rally_rest_api', 'activerecord', 'activesupport', 'sqlite3', 'i18n', 'rake', 'actionpack', 'trollop', 'rest-client', 'rainbow', 'json_pure'].each do |d|
+	['rally_rest_api', 'sqlite3', 'i18n', 'rake', 'actionpack', 'trollop', 'rest-client', 'rainbow', 'json_pure'].each do |d|
 	  gem.add_runtime_dependency d
 	end
+	
+	['activerecord', 'activesupport']. each { |d| gem.add_runtime_dependency d, '>= 3.0.0' }
 	
 	gem.files.include 'example_config.rb'
 	gem.files.include Dir.glob('lib/**/*.rb')
