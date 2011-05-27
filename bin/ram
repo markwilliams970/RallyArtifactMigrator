@@ -42,12 +42,14 @@ unless opts[:help]
 						ArtifactMigration::Logger.debug ie
 						puts ie
 						puts "Issues occured during the import process."
+						raise ie
 					end
 				
 				rescue Exception => ee
 					ArtifactMigration::Logger.debug ee
 					puts ee
 					puts "Issues occured during the export process."
+					raise ee
 				end
 			else
 				puts "Errors were found in the config file."
@@ -56,6 +58,7 @@ unless opts[:help]
 			ArtifactMigration::Logger.debug ce
 			puts ce
 			puts "Errors were found in the config file."
+			raise ce
 		end
 	
 	else

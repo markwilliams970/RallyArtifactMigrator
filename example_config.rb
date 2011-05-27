@@ -6,7 +6,7 @@
 
 ArtifactMigration::Configuration.define do |config|
 	config.source do |source|
-		source.export_source = :rally
+		source.vendor = :rally
 		
 		source.rally.server = 'https://demo.rallydev.com/slm'
 		source.rally.username = "dan@acme.com"
@@ -19,8 +19,8 @@ ArtifactMigration::Configuration.define do |config|
 		source.rally.add_project_oid 729701
 		source.rally.add_project_oid 729727
 		
-		source.rally.migrate_all_types # Exports all types to the intermediate database
-		source.rally.migrate_attachments
+		source.migrate_all_types # Exports all types to the intermediate database
+		source.migrate_attachments
 		
 		[:hierarchical_requirement, :defect, :defect_suite, :test_case].each { |type| source.ignore_field type, :package }
 		
@@ -38,8 +38,8 @@ ArtifactMigration::Configuration.define do |config|
 		target.map_project_oid :from => 729701, :to => 33333333
 		target.map_project_oid :from => 729727, :to => 44444444
 		
-		target.rally.migrate_typical_types # Typical types do not include RQM Types (Test Folder, Test Set, ect.)
-		target.rally.migrate_attachments
+		target.migrate_typical_types # Typical types do not include RQM Types (Test Folder, Test Set, ect.)
+		target.migrate_attachments
 		
 
 =begin

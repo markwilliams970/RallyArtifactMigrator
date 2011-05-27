@@ -90,14 +90,16 @@ module ArtifactMigration
 			c = Configuration.singleton.source_config
 			Logger.debug "Klass = #{klass}"
 			
-			klass.all.each do |obj|
-				attrs = {}
-				obj.attributes.each { |k, v| attrs[map_field(type, k.to_sym)] = v }
-				
+			klass.all.each do |obj|				
 				%w(object_i_d defects predecessors parent successors duplicates children test_cases tags project workspace release iteration work_product).each { |a| attrs.delete a.to_sym if attrs.has_key? a.to_sym }
 				
 				unless ImportTransactionLog.readonly.where("object_i_d = ? AND transaction_type = ?", obj.object_i_d, 'import').exists?
 					valid = true
+					
+					attrs = {}
+					obj.attributes.each do |k, v|
+						attrs[map_field(type, k.to_sym)] = JSON.parse(v)
+					end
 					
 					attrs[:workspace] = @@workspace
 					attrs[:release] = @@object_manager.get_mapped_artifact obj.release 						if klass.column_names.include? 'release' #&& obj.release
@@ -144,13 +146,14 @@ module ArtifactMigration
 					end
 					
 					#Clear out any fields that are blank or nil
-					attrs.each_key { |k| attrs.delete k if (attrs[k].nil?) or (attrs[k] == '') }
+					#attrs.each_key { |k| attrs.delete k if (attrs[k].nil?) or (attrs[k] == '') }
 
 					if [:test_case_result, :test_case_step].include? type
 						valid = (attrs.has_key? :test_case) && (attrs[:test_case] != nil)
 					end
 					
-					attrs.delete_if { |k, v| v.nil? }
+					attrs.delete_if { |k, v| (v.nil?) or (v == '') }
+					attrs.delete :formatted_i_d
 					
 					if valid
 						Logger.debug "Creating #{attrs[:name]} for project '#{attrs[:project]}' in workspace '#{attrs[:workspace]}'"

@@ -7,11 +7,14 @@
 require 'active_support/inflector'
 
 module ArtifactMigration
-	class SourceConfigurationDefinition		
+	class SourceConfigurationDefinition	< ConfigurationDefinition
 		attr_reader :rally
+		
+		attr_accessor :vendor
 		
 		def initialize
 			@rally = RallyConfigurationDefinition.new
+			@vendor = :rally
 		end
 				
 		def ignore_field(type, field_name)

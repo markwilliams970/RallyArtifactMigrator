@@ -24,12 +24,13 @@ module ArtifactMigration
 
 	eager_autoload do
 		autoload_under 'configuration_definitions' do
+			autoload :ConfigurationDefinition
 			autoload :RallyConfigDefinition
 			autoload :TargetConfigDefinition
 			autoload :SourceConfigDefinition
 		end
 		
-		autload_under 'exporters' do
+		autoload_under 'exporters' do
 			autoload :RallyExporter
 		end
 		

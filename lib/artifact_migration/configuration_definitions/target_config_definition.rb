@@ -7,7 +7,7 @@
 require 'active_support/inflector'
 
 module ArtifactMigration
-	class TargetConfigurationDefinition		
+	class TargetConfigurationDefinition	< ConfigurationDefinition
 		attr_accessor :rally
 		
 		attr_accessor :default_project_oid

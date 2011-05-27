@@ -13,7 +13,7 @@ module ArtifactMigration
 				@@rally_ds = RallyRestAPI.new :username => c.rally.username, :password => c.rally.password, :base_url => c.rally.server, :version => ArtifactMigration::RALLY_API_VERSION, :http_headers => ArtifactMigration::INTEGRATION_HEADER
 			
 				[:tag, :release, :iteration, :hierarchical_requirement, :test_folder, :test_case, :test_case_step, :test_set, :test_case_result, :defect, :defect_suite, :task].each do |type|
-					export_type type if c.rally.migration_types.include? type
+					export_type type if c.migration_types.include? type
 				end
 			
 				@@workspace = Helper.find_workspace(@@rally_ds, c.rally.workspace_oid)
@@ -34,7 +34,7 @@ module ArtifactMigration
 				@@rw_attrs = {}
 			
 				c = Configuration.singleton.source_config
-				ret = Helper.batch_toolkit :url => c.server,
+				ret = Helper.batch_toolkit :url => c.rally.server,
 					:username => c.rally.username,
 					:password => c.rally.password,
 					:version => ArtifactMigration::RALLY_API_VERSION,
@@ -75,7 +75,7 @@ module ArtifactMigration
 				c.rally.project_oids.each do |poid|
 					Logger.info("Searching Project #{poid}")
 				
-					ret = Helper.batch_toolkit :url => c.server,
+					ret = Helper.batch_toolkit :url => c.rally.server,
 						:username => c.rally.username,
 						:password => c.rally.password,
 						:version => ArtifactMigration::RALLY_API_VERSION,
@@ -104,6 +104,7 @@ module ArtifactMigration
 							
 								attrs[k.to_s.underscore.to_sym] = rels.to_json
 							else
+=begin
 								if v.class == Hash
 									if v.has_key? "LinkID"
 										attrs[k.to_s.underscore.to_sym] = v["LinkID"].to_s if klass.column_names.include? k.to_s.underscore 
@@ -111,6 +112,7 @@ module ArtifactMigration
 								else
 									attrs[k.to_s.underscore.to_sym] = v.to_s if klass.column_names.include? k.to_s.underscore 
 								end
+=end
 							end
 						end
 					
