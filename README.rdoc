@@ -22,6 +22,10 @@ Rally Artifact Migration utility.
 
 == Release Notes
 
+=== 0.3.2
+
+* [BUG] Dependency issue when Rails 2.x is installed
+
 === 0.3.1
 
 * [BUG] Attachment import doesn't work if the user's Default Workspace is not set to the config's target workspace
