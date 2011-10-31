@@ -1,14 +1,24 @@
 require 'active_support/inflector'
 require 'rainbow'
+require 'events'
 
 module ArtifactMigration
 	class Validator
-		def self.verify
+		extend Events::Emitter
+		
+		def self.verify_export
 			@@log = ArtifactMigration::Logger
 			success = true
 			
+			emit :verify_source
 			success = verify_source_config
-			success = verify_target_config if success
+			
+			success
+		end
+		
+		def self.verify_import
+			emit :verify_target
+			success = verify_target_config
 			
 			sc = Configuration.singleton.source_config
 			tc = Configuration.singleton.target_config
@@ -24,6 +34,8 @@ module ArtifactMigration
 			
 			if block_given?
 				value = yield
+				
+				emit :validation, args[0].to_s, value
 				@@log.info("#{args[0].to_s}", value == true ? "YES".color(:green) : "NO".color(:red)) if args
 			end
 			

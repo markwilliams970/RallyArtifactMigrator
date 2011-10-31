@@ -3,40 +3,59 @@ require 'rally_rest_api'
 require 'json'
 require 'net/http'
 require 'net/https'
+require 'events'
 
 module ArtifactMigration
 	class Importer
+		extend Events::Emitter
+		
 		def self.run
+			prepare
+			
+			config = Configuration.singleton.target_config
+			
+			emit :begin_import
+			[:tag, :release, :iteration, :hierarchical_requirement, :test_folder, :test_case, :test_case_step, :test_set, :test_case_result, :defect, :defect_suite, :task].each do |type|
+				Logger.info "Importing #{type.to_s.humanize}" if config.migration_types.include? type
+
+				if config.migration_types.include? type
+					emit :begin_type_import, type
+					import_type type 
+					emit :end_type_import, type
+				end
+
+				update_story_parents if config.migration_types.include?(type) and type == :hierarchical_requirement
+				update_story_predecessors if config.migration_types.include?(type) and type == :hierarchical_requirement
+				update_defect_duplicates if config.migration_types.include?(type) and type == :defect
+				update_test_folder_parents if config.migration_types.include?(type) and type == :test_folder
+			end
+			
+			update_artifact_statuses
+			import_attachments if config.migrate_attachments_flag
+			
+			emit :end_import
+		end
+		
+		def self.prepare
 			ArtifactMigration::Schema.create_transaction_log_schema
 			ArtifactMigration::Schema.create_object_id_map_schema			
 			ArtifactMigration::Schema.create_object_cache_schema
 			
 			config = Configuration.singleton.target_config
+			config.version = ArtifactMigration::RALLY_API_VERSION if config.version.nil?
 			
-			@@rally_ds = RallyRestAPI.new :username => config.rally.username, :password => config.rally.password, :base_url => config.rally.server, :version => ArtifactMigration::RALLY_API_VERSION, :http_headers => ArtifactMigration::INTEGRATION_HEADER
-			@@workspace = Helper.find_workspace @@rally_ds, config.rally.workspace_oid
+			@@rally_ds = RallyRestAPI.new :username => config.username, :password => config.password, :base_url => config.server, :version => config.version, :http_headers => ArtifactMigration::INTEGRATION_HEADER
+			@@workspace = Helper.find_workspace @@rally_ds, config.workspace_oid
 			@@projects = {}
 			@@user_cache = {}
 			
 			@@object_manager = ObjectManager.new @@rally_ds, @@workspace
-			
-			[:tag, :release, :iteration, :hierarchical_requirement, :test_folder, :test_case, :test_case_step, :test_set, :test_case_result, :defect, :defect_suite, :task].each do |type|
-				Logger.info "Importing #{type.to_s.humanize}" if config.rally.migration_types.include? type
-				
-				import_type type if config.rally.migration_types.include? type
-				
-				update_story_parents if config.rally.migration_types.include?(type) and type == :hierarchical_requirement
-				update_story_predecessors if config.rally.migration_types.include?(type) and type == :hierarchical_requirement
-				update_defect_duplicates if config.rally.migration_types.include?(type) and type == :defect
-				update_test_folder_parents if config.rally.migration_types.include?(type) and type == :test_folder
-				#fix_test_sets if config.migration_types.include?(type) and type == :test_set
-			end
-			
-			update_artifact_statuses
-			import_attachments if config.rally.migrate_attachments_flag
 		end
 		
-		protected
+		def self.object_manager
+			@@object_manager
+		end
+		
 		def self.map_field(type, field)
 			config = Configuration.singleton.target_config
 			
@@ -73,7 +92,14 @@ module ArtifactMigration
 			
 			if mapped_un
 				@@user_cache[mapped_un] = (@@rally_ds.find(:user, :workspace => @@workspace) { equal :user_name, mapped_un }).results.first if @@user_cache[mapped_un].nil?
-				return @@user_cache[mapped_un]
+				
+				if @@user_cache.has_key? mapped_un
+					return @@user_cache[mapped_un]
+				elsif config.default_username
+					mapped_un = config.default_username
+					@@user_cache[mapped_un] = (@@rally_ds.find(:user, :workspace => @@workspace) { equal :user_name, mapped_un }).results.first if @@user_cache[mapped_un].nil?
+					return @@user_cache[mapped_un]
+				end
 			end
 			
 			nil
@@ -84,22 +110,26 @@ module ArtifactMigration
 			stmap.target_id if stmap
 		end
 		
+		protected
 		def self.import_type(type)
 			Logger.debug "Looking for class of type #{type.to_s.humanize}"
 			klass = ArtifactMigration::RallyArtifacts.get_artifact_class(type)
-			c = Configuration.singleton.source_config
+			c = Configuration.singleton.target_config
 			Logger.debug "Klass = #{klass}"
 			
-			klass.all.each do |obj|				
+			begin
+			  emit :import_type_count, klass.count
+			rescue
+		  end
+		  
+			klass.all.each do |obj|
+				attrs = {}
+				obj.attributes.each { |k, v| attrs[map_field(type, k.to_sym)] = v }
+				
 				%w(object_i_d defects predecessors parent successors duplicates children test_cases tags project workspace release iteration work_product).each { |a| attrs.delete a.to_sym if attrs.has_key? a.to_sym }
 				
 				unless ImportTransactionLog.readonly.where("object_i_d = ? AND transaction_type = ?", obj.object_i_d, 'import').exists?
 					valid = true
-					
-					attrs = {}
-					obj.attributes.each do |k, v|
-						attrs[map_field(type, k.to_sym)] = JSON.parse(v)
-					end
 					
 					attrs[:workspace] = @@workspace
 					attrs[:release] = @@object_manager.get_mapped_artifact obj.release 						if klass.column_names.include? 'release' #&& obj.release
@@ -146,14 +176,27 @@ module ArtifactMigration
 					end
 					
 					#Clear out any fields that are blank or nil
-					#attrs.each_key { |k| attrs.delete k if (attrs[k].nil?) or (attrs[k] == '') }
+					attrs.each_key { |k| attrs.delete k if (attrs[k].nil?) or (attrs[k] == '') }
+					attrs.delete_if { |k, v| c.ignore_fields[type].include?(k) if c.ignore_fields.has_key? type }
+					
+					attrs.each_key do |k|
+						begin
+							if JSON.parse(attrs[k]).class == Hash
+								att = JSON.parse(attrs[k])
+								att[:link_i_d] = att.delete "LinkID"
+								att[:display_string] = att.delete "DisplayString"
+								
+								attrs[k] = att
+							end
+						rescue
+						end
+					end
 
 					if [:test_case_result, :test_case_step].include? type
 						valid = (attrs.has_key? :test_case) && (attrs[:test_case] != nil)
 					end
 					
-					attrs.delete_if { |k, v| (v.nil?) or (v == '') }
-					attrs.delete :formatted_i_d
+					attrs.delete_if { |k, v| v.nil? }
 					
 					if valid
 						Logger.debug "Creating #{attrs[:name]} for project '#{attrs[:project]}' in workspace '#{attrs[:workspace]}'"
@@ -163,16 +206,20 @@ module ArtifactMigration
 										
 						@@object_manager.map_artifact obj.object_i_d, artifact.object_i_d, artifact
 						ImportTransactionLog.create(:object_i_d => obj.object_i_d, :transaction_type => 'import')
+						emit :imported_artifact, type, artifact
 					end
 				else
 					Logger.info("Object ID has alread been processed - #{obj.object_i_d}");
 				end
+				
+				emit :loop
 			end if klass
 		end
 		
 		def self.update_story_parents
 			return unless ArtifactMigration::RallyArtifacts::HierarchicalRequirement.column_names.include? 'parent'
 			Logger.info "Updating Story Parents"
+			emit :begin_update_story_parents, ArtifactMigration::RallyArtifacts::HierarchicalRequirement.count
 			
 			ArtifactMigration::RallyArtifacts::HierarchicalRequirement.all.each do |story|
 				unless ImportTransactionLog.readonly.where("object_i_d = ? AND transaction_type = ?", story.object_i_d, 'reparent').exists?
@@ -185,18 +232,27 @@ module ArtifactMigration
 							Logger.debug "Updating parent for '#{new_story}' to '#{new_story_parent}'"
 							new_story.update(:parent => new_story_parent)
 							ImportTransactionLog.create(:object_i_d => story.object_i_d, :transaction_type => 'reparent')
+							
+							emit :reparent, new_story
+							
 							Logger.info "Updated parent for '#{new_story}'"
 						else
 							Logger.info "Story #{story.object_i_d} has a parent, but it was not exported.  Was it in another project?"
 						end
 					end
 				end
+				
+				emit :loop
 			end
+			
+			emit :end_update_story_parents
 		end
 		
 		def self.update_story_predecessors
 			return unless ArtifactMigration::RallyArtifacts::HierarchicalRequirement.column_names.include? 'predecessors'
 			Logger.info "Updating Story Predecessors"
+			
+			emit :begin_update_story_predecessors, ArtifactMigration::RallyArtifacts::HierarchicalRequirement.count
 			
 			ArtifactMigration::RallyArtifacts::HierarchicalRequirement.all.each do |story|
 				unless ImportTransactionLog.readonly.where("object_i_d = ? AND transaction_type = ?", story.object_i_d, 'predecessors').exists?
@@ -222,6 +278,9 @@ module ArtifactMigration
 							Logger.debug "Updating predecessors for '#{new_story}'"
 							new_story.update(:predecessors => preds)
 							ImportTransactionLog.create(:object_i_d => story.object_i_d, :transaction_type => 'predecessors')
+							
+							emit :story_predecessors_updated, story
+							
 							Logger.info "Updated predecessors for '#{new_story}'"
 							Logger.info("Not all predecessors were exported") unless JSON.parse(story.predecessors).size == preds.size
 						else
@@ -229,19 +288,30 @@ module ArtifactMigration
 						end
 					end
 				end
+				
+				emit :loop
 			end
+			
+			emit :end_update_story_predecessors
 		end
 		
 		def self.update_artifact_statuses
+			emit :begin_update_artifact_statuses
+			
 			config = Configuration.singleton.target_config
 			
 			[:hierarchical_requirement, :defect, :defect_suite].reverse.each do |type|
-				Logger.info "Updating statuses for #{type.to_s.humanize}" if config.rally.migration_types.include? type
+				Logger.info "Updating statuses for #{type.to_s.humanize}" if config.migration_types.include? type
 				
 				klass = ArtifactMigration::RallyArtifacts.get_artifact_class(type)
-				#c = Configuration.singleton.source_config
+				c = Configuration.singleton.source_config
 				Logger.debug "Klass = #{klass}"
 
+        begin
+				  emit :update_status_begin, type, klass.count
+				rescue
+			  end
+			  
 				klass.all.each do |obj|
 					artifact_id = get_mapped_id obj.object_i_d
 					Logger.debug "Looking at #{artifact_id} to update status"
@@ -252,19 +322,30 @@ module ArtifactMigration
 							obj_state = (type == :task) ? obj.state : obj.schedule_state
 							art_state = (type == :task) ? artifact.state : artifact.schedule_state
 							if art_state != obj_state
-								Logger.info "#{artifact}'s schedule state is being updated" unless artifact.children
-								artifact.update((type == :task ? :state : :schedule_state) => obj_state) unless artifact.children
+								unless artifact.children
+									Logger.info "#{artifact}'s schedule state is being updated"
+									artifact.update((type == :task ? :state : :schedule_state) => obj_state)
+									
+									emit :artifact_status_updated, artifact
+								end
 							end
 						end
 					end
+					
+					emit :loop
 				end
 			end
+			
+			emit :end_update_artifact_statuses
 		end
 		
 		def self.update_test_folder_parents
 			return unless ArtifactMigration::RallyArtifacts::TestFolder.column_names.include? 'parent'
+			
+			
 			Logger.info "Updating Test Folder Parents"
 			
+			emit :begin_test_folder_reparent, ArtifactMigration::RallyArtifacts::TestFolder.count
 			ArtifactMigration::RallyArtifacts::TestFolder.all.each do |folder|
 				unless ImportTransactionLog.readonly.where("object_i_d = ? AND transaction_type = ?", folder.object_i_d, 'reparent').exists?
 					Logger.debug "Looking at test folder '#{folder.object_i_d} - #{folder.name}'"
@@ -282,13 +363,17 @@ module ArtifactMigration
 						end
 					end
 				end
+				
+				emit :loop
 			end
+			emit :end_test_folder_reparent
 		end
 		
 		def self.update_defect_duplicates
 			return unless ArtifactMigration::RallyArtifacts::Defect.column_names.include? 'duplicates'
 			Logger.info "Updating Defect Dupicates"
 			
+			emit :begin_update_defect_duplicates, ArtifactMigration::RallyArtifacts::Defect.count
 			ArtifactMigration::RallyArtifacts::Defect.all.each do |defect|
 				unless ImportTransactionLog.readonly.where("object_i_d = ? AND transaction_type = ?", defect.object_i_d, 'duplicates').exists?
 					Logger.debug "Looking at defect '#{defect.object_i_d} - #{defect.name}'"
@@ -316,7 +401,9 @@ module ArtifactMigration
 						end
 					end
 				end
+				emit :loop
 			end
+			emit :end_update_defect_duplicates
 		end
 		
 		def self.import_attachments
@@ -337,11 +424,12 @@ module ArtifactMigration
 			attachment_new_url = "ax/newAttachment.sp"
 			attachment_create_url = "ax/create.sp"
 
-			client = RestClient::Resource.new("#{config.rally.server}", :verify_ssl => false, :headers => {'Cookie' => token})
+			client = RestClient::Resource.new("#{config.server}", :verify_ssl => false, :headers => {'Cookie' => token})
 			
-			res = client['switchWorkspace.sp'].post("wOid=#{config.rally.workspace_oid}")
+			res = client['switchWorkspace.sp'].post("wOid=#{config.workspace_oid}")
 			#Logger.debug res
-						
+			
+			emit :begin_attachment_import, ArtifactMigration::Attachment.count
 			ArtifactMigration::Attachment.all.each do |attachment|
 				source_aid = attachment.artifact_i_d
 				target_aid = @@object_manager.get_mapped_artifact source_aid
@@ -356,7 +444,7 @@ module ArtifactMigration
 				res = client[attachment_create_url].post(:fileName => attachment.name, :file => File.new(File.join('Attachments', "#{source_aid}", "#{att_id}"), 'rb'), :oid => target_aid.object_i_d, :enclosure => attachment.description)
 				
 				Logger.debug res.body
-				Logger.debug (res.body.include? %q(<body onload="if(window.opener){window.opener.setTimeout('refreshWindow()', 0);}window.close();"></body>))
+				Logger.debug(res.body.include? %q(<body onload="if(window.opener){window.opener.setTimeout('refreshWindow()', 0);}window.close();"></body>))
 				
 				success = res.body.include? %q(<body onload="if(window.opener){window.opener.setTimeout('refreshWindow()', 0);}window.close();"></body>)
 				
@@ -366,7 +454,10 @@ module ArtifactMigration
 				else
 					Logger.info "FAILED to upload Attachment #{attachment.name} for Artifact #{target_aid}"
 				end
+				
+				emit :loop
 			end
+			emit :end_attachment_import
 			
 			prefs.update(:default_workspace => old_ws, :default_project => old_p)
 		end
@@ -410,7 +501,7 @@ module ArtifactMigration
 			http = Net::HTTP.new(uri.host, 443)
 			http.use_ssl = true
 
-			data = "j_username=#{config.rally.username}&j_password=#{config.rally.password}"
+			data = "j_username=#{config.username}&j_password=#{config.password}"
 			headers = {}
 
 			Logger.debug "Phase 1 Security Authorization - #{uri.path}/#{security_url}"

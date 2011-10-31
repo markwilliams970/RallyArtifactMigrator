@@ -13,7 +13,7 @@ module ArtifactMigration
 	TYPICAL_TYPES = VALID_TYPES - RQM_TYPES
 	ARTIFACT_TYPES = [:hierarchical_requirement, :defect, :defect_suite, :test_case, :task]
 	
-	RALLY_API_VERSION = "1.23"
+	RALLY_API_VERSION = "1.25"
 	
 	VERSION = File.read(File.join(File.dirname(__FILE__), '..', 'VERSION'))
 	
@@ -23,17 +23,7 @@ module ArtifactMigration
 	INTEGRATION_HEADER.version = ArtifactMigration::VERSION
 
 	eager_autoload do
-		autoload_under 'configuration_definitions' do
-			autoload :ConfigurationDefinition
-			autoload :RallyConfigDefinition
-			autoload :TargetConfigDefinition
-			autoload :SourceConfigDefinition
-		end
-		
-		autoload_under 'exporters' do
-			autoload :RallyExporter
-		end
-		
+		autoload :ConfigurationDefinition
 		autoload :Configuration
 		autoload :Validator
 		autoload :Runner
@@ -42,6 +32,8 @@ module ArtifactMigration
 		autoload :Schema
 		autoload :Importer
 		autoload :Exporter
+		autoload :ProgressBar
+		autoload :CLI
 		autoload :ObjectManager
 		
 		autoload_under 'models' do
@@ -51,7 +43,7 @@ module ArtifactMigration
 			autoload :ObjectTypeMap
 			autoload :RallyArtifacts
 		end
-		
+			
 	end
 end
 

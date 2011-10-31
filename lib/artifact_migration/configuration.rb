@@ -30,7 +30,7 @@ module ArtifactMigration
 		# Defines the source configuration block in the config file
 		#
 		def source
-			@source_config ||= SourceConfigurationDefinition.new
+			@source_config ||= ConfigurationDefinition.new
 			yield @source_config if block_given?
 		end
 		
@@ -38,7 +38,7 @@ module ArtifactMigration
 		# Defines the target configuration block in the config file
 		#
 		def target
-			@target_config ||= TargetConfigurationDefinition.new
+			@target_config ||= ConfigurationDefinition.new
 			yield @target_config if block_given?
 		end
 		

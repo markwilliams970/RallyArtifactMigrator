@@ -1,9 +1,12 @@
 require 'rest_client'
 require 'base64'
 require 'json'
+require 'events'
 
 module ArtifactMigration
 	class Helper
+		extend Events::Emitter
+		
 		def self.find_workspace(rally, workspace_oid)
 			rally.user.subscription.workspaces.each do |ws|
 				return ws if ws.object_i_d == workspace_oid.to_s
@@ -51,6 +54,7 @@ module ArtifactMigration
 			query += "&workspace=#{base_url}/workspace/#{opts[:workspace]}" if opts[:workspace]
 			query += "&project=#{base_url}/project/#{opts[:project]}" if opts[:project]
 			
+			emit :batch_toolkit_begin, opts[:type]
 			while start < size
 				res = adhoc.post( :adHocQuery => ({:adhoc => (query + "&start=#{start}")}.to_json) )
 				resj = JSON.parse(res.to_str)
@@ -65,7 +69,9 @@ module ArtifactMigration
 				end
 
 				start += 200
+				emit :batch_toolkit_processed, start, size
 			end
+			emit :batch_toolkit_end, opts[:type]
 
 			ret
 		end

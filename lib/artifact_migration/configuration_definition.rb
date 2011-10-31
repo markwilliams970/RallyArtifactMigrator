@@ -6,6 +6,14 @@
 
 require 'active_support/inflector'
 
+if RUBY_VERSION < '1.9.0'
+	require 'fastercsv'
+	CSVImpl = FasterCSV
+else
+	require 'csv'
+	CSVImpl = CSV
+end
+
 module ArtifactMigration
 	class ConfigurationDefinition		
 		attr_accessor :username
@@ -14,6 +22,8 @@ module ArtifactMigration
 		attr_accessor :workspace_oid
 		attr_accessor :project_scope_up
 		attr_accessor :project_scope_down
+		attr_accessor :default_username
+		attr_accessor :version
 		
 		attr_accessor :default_project_oid
 		
@@ -29,6 +39,7 @@ module ArtifactMigration
 			@project_oids = [].to_set
 			@migration_types = [].to_set
 			@project_mapping = {}
+			@version = ArtifactMigration::RALLY_API_VERSION
 			
 			@username_mapping = {}
 			@username_mapping_regex = //
@@ -39,12 +50,12 @@ module ArtifactMigration
 		end
 				
 		def ignore_field(type, field_name)
-			@ignore_fields[type] ||= [].to_set
+			@ignore_fields[type] = [].to_set unless @ignore_fields.has_key? type
 			@ignore_fields[type] << field_name.to_s.underscore.to_sym if field_name && !([:object_i_d, :name].include? field_name.to_s.underscore.to_sym)
 		end
 		
 		def map_field(type, options = {})
-			@field_mapping[type] ||= {}
+			@field_mapping[type] = {} unless @field_mapping.has_key type
 			
 			@field_mapping[type][options[:from].to_s.underscore.to_sym] = options[:to].to_s.underscore.to_sym
 		end
@@ -78,6 +89,16 @@ module ArtifactMigration
 		end
 		
 		def map_username_by_regex(options = {})
+		end
+		
+		def map_username_by_csv(options = {})
+			from_column = options[:from]
+			to_column = options[:to]
+			user_header_row = !from_column.nil? && !to_column.nil? && from_column.class == String
+			
+			CSVImpl.foreach(options[:file], :headers => user_header_row) do |user|
+				@username_mapping[user[from_column]] = user[to_column]
+			end
 		end
 	end
 end
