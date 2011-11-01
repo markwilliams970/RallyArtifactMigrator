@@ -6,18 +6,17 @@
 
 ArtifactMigration::Configuration.define do |config|
 	config.source do |source|
-		source.vendor = :rally
+		source.server = 'https://demo.rallydev.com/slm'
+		source.username = "dan@acme.com"
+		source.password = "AcmeUser"
+		source.workspace_oid = 729424
+		source.project_scope_up = false
+		source.project_scope_down = false
+		source.version = "1.25"
 		
-		source.rally.server = 'https://demo.rallydev.com/slm'
-		source.rally.username = "dan@acme.com"
-		source.rally.password = "AcmeUser"
-		source.rally.workspace_oid = 729424
-		source.rally.project_scope_up = false
-		source.rally.project_scope_down = false
-		
-		source.rally.add_project_oid 729688
-		source.rally.add_project_oid 729701
-		source.rally.add_project_oid 729727
+		source.add_project_oid 729688
+		source.add_project_oid 729701
+		source.add_project_oid 729727
 		
 		source.migrate_all_types # Exports all types to the intermediate database
 		source.migrate_attachments
@@ -27,12 +26,13 @@ ArtifactMigration::Configuration.define do |config|
 	end
 	
 	config.target do |target|
-		target.rally.server = 'https://demo.rallydev.com/slm'
-		target.rally.username = "dan@rallydev.com"
-		target.rally.password = "AcmeUser"
-		target.rally.workspace_oid = 11111111
-		target.rally.project_scope_up = true
-		target.rally.project_scope_down = true
+		target.server = 'https://demo.rallydev.com/slm'
+		target.username = "dan@rallydev.com"
+		target.password = "AcmeUser"
+		target.workspace_oid = 11111111
+		target.project_scope_up = true
+		target.project_scope_down = true
+		target.version = "1.25"
 		
 		target.default_project_oid = 22222222
 		target.map_project_oid :from => 729701, :to => 33333333
@@ -41,6 +41,7 @@ ArtifactMigration::Configuration.define do |config|
 		target.migrate_typical_types # Typical types do not include RQM Types (Test Folder, Test Set, ect.)
 		target.migrate_attachments
 		
+		#target.map_username_by_csv :file => 'users.csv', :from => 'Source Username Column Name', :to => 'Target Username Column Name'
 
 =begin
 		Example of mapping a username.  Note that this must be done for each username
@@ -56,12 +57,11 @@ ArtifactMigration::Configuration.define do |config|
 =end
 	end
 	
-	output = Logger.new STDOUT
+	output = Logger.new "info.log"
 	output.level = Logger::INFO
-	
-	#debug = Logger.new "debug.log"
-	#debug.level = Logger::DEBUG
-	
 	config.add_logger output
-	#config.add_logger debug
+	
+	debug = Logger.new "debug.log"
+	debug.level = Logger::DEBUG	
+	config.add_logger debug
 end

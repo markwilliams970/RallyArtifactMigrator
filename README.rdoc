@@ -7,20 +7,39 @@ Rally Artifact Migration utility.
 === Mac OS X
 
 * Install Xcode (for compiling SQLite3)
-* From the command line type: sudo gem install ram-0.3.1.gem --no-rdoc --no-ri
+* From the command line type: sudo gem install ram-0.3.4.gem --no-rdoc --no-ri
 
 === Ubuntu
 
 * Install GCC (for compiling SQLite3)
 * sudo apt-get install libsqlite3-dev
-* sudo gem install ram-0.3.1.gem --no-rdoc --no-ri
+* sudo gem install ram-0.3.4.gem --no-rdoc --no-ri
 
 === Windows
 
 * Not sure about prereqs, but you need to be able to install SQLite3
-* From the command line type: gem install ram-0.3.1.gem --no-rdoc --no-ri
+* From the command line type: gem install ram-0.3.4.gem --no-rdoc --no-ri
 
 == Release Notes
+
+=== Known Issues
+
+* Custom fields that contain special characters are not migrated.
+* Custom fields that have multiple capital letters in a row are not migrated.
+
+=== 0.3.4
+
+* [BUG] WebLink not handled properly during import
+* [FEATURE] Enhanced Console output.  Progress bar for each phase.
+* [FEATURE] Publish events (using Event Emitter pattern) for each phase.
+
+=== 0.3.3
+
+* [FEATURE] ConfigurationDefinition.map_username_by_csv added. Options are  :file, :from_column, :to_column.
+* [FEATURE] ConfigurationDefinition.default_username added.  Allows a default user to be used if a user in the source workspace was not moved to the target workspace.
+* [FEATURE] Debug log enabled by default in example config file.
+* [BUG] Custom field mapping in ConfigurationDefintion was not working.
+* [BUG] Ignore field in target configuration was not used.
 
 === 0.3.2
 
@@ -62,6 +81,6 @@ Initial release.  Can migrate most types of artifacts from one project to anothe
 
 == Copyright
 
-Copyright (c) 2011 Colin O'Brien. See LICENSE.txt for
+Copyright (c) 2011 Rally Software. See LICENSE.txt for
 further details.
 

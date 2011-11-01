@@ -5,13 +5,17 @@ source "http://rubygems.org"
 
 # Add dependencies to develop your gem here.
 # Include everything needed to run rake, tests, features, etc.
-
-gem 'activesupport', '>= 3.0.0'
-gem 'activerecord', '>= 3.0.0'
-
 group :development do
   gem "shoulda", ">= 0"
   gem "bundler", "~> 1.0.0"
   gem "jeweler", "~> 1.5.2"
   gem "rcov", ">= 0"
+end
+
+gem "multi_json", '~> 1.0'
+gem 'i18n', "~> 0.6.0"
+
+['activesupport', 'activemodel', 'activerecord', 'actionpack'].each {|d| gem d, "~> 3.1.0"}
+['rally_rest_api', 'sqlite3', 'rake', 'trollop', 'rest-client', 'rainbow', 'json_pure', 'events', 'fastercsv', 'options', "highline"].each do |d|
+  gem d
 end

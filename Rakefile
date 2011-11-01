@@ -10,6 +10,7 @@ end
 require 'rake'
 
 require 'jeweler'
+
 Jeweler::Tasks.new do |gem|
   # gem is a Gem::Specification... see http://docs.rubygems.org/read/chapter/20 for more options
   gem.name = "ram"
@@ -22,16 +23,15 @@ Jeweler::Tasks.new do |gem|
   # Include your dependencies below. Runtime dependencies are required when using your gem,
   # and development dependencies are only needed for development (ie running rake tasks, tests, etc)
 	
-	gem.add_runtime_dependency "multi_json", "~> 1.0"
-
-	['rally_rest_api', 'sqlite3', 'i18n', 'rake', 'actionpack', 'trollop', 'rest-client', 'rainbow', 'json_pure'].each do |d|
+	gem.add_runtime_dependency 'multi_json', '~> 1.0'
+	gem.add_runtime_dependency 'i18n', "~> 0.6.0"
+	['activesupport', 'activemodel', 'activerecord', 'actionpack'].each {|d| gem.add_runtime_dependency d, "~> 3.1.0"}
+	['rally_rest_api', 'sqlite3', 'rake', 'trollop', 'rest-client', 'rainbow', 'json_pure', 'events', 'fastercsv', 'options', "highline"].each do |d|
 	  gem.add_runtime_dependency d
 	end
 	
-	['actionpack', 'activerecord', 'activesupport']. each { |d| gem.add_runtime_dependency d, '>= 3.0.0' }
-	
 	gem.files.include 'example_config.rb'
-	gem.files.include Dir.glob('lib/**/*.rb')
+	gem.files.include Dir.glob('lib/**/*.*')
 	gem.files.include 'VERSION'
 	
 	gem.executables = ['ram']
@@ -51,6 +51,7 @@ version = File.exist?('VERSION') ? File.read('VERSION') : ""
 Rake::PackageTask.new('ram', version) do |p|
 	p.need_tar_gz = true
 	
+	p.package_files.include "bin/**/*.*"
 	p.package_files.include "lib/**/*.rb"
 	p.package_files.include "example_config.rb"
 	p.package_files.include "VERSION"

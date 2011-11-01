@@ -6,19 +6,17 @@ module ArtifactMigration
 	class Validator
 		extend Events::Emitter
 		
-		def self.verify_export
+		def self.verify
 			@@log = ArtifactMigration::Logger
 			success = true
 			
 			emit :verify_source
 			success = verify_source_config
-			
-			success
-		end
-		
-		def self.verify_import
-			emit :verify_target
-			success = verify_target_config
+
+ 			if success
+				emit :verify_target
+				success = verify_target_config
+			end
 			
 			sc = Configuration.singleton.source_config
 			tc = Configuration.singleton.target_config

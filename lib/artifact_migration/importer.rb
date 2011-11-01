@@ -117,11 +117,7 @@ module ArtifactMigration
 			c = Configuration.singleton.target_config
 			Logger.debug "Klass = #{klass}"
 			
-			begin
-			  emit :import_type_count, klass.count
-			rescue
-		  end
-		  
+			emit :import_type_count, klass.count
 			klass.all.each do |obj|
 				attrs = {}
 				obj.attributes.each { |k, v| attrs[map_field(type, k.to_sym)] = v }
@@ -307,11 +303,7 @@ module ArtifactMigration
 				c = Configuration.singleton.source_config
 				Logger.debug "Klass = #{klass}"
 
-        begin
-				  emit :update_status_begin, type, klass.count
-				rescue
-			  end
-			  
+				emit :update_status_begin, type, klass.count
 				klass.all.each do |obj|
 					artifact_id = get_mapped_id obj.object_i_d
 					Logger.debug "Looking at #{artifact_id} to update status"
