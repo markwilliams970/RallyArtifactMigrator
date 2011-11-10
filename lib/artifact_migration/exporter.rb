@@ -79,8 +79,10 @@ module ArtifactMigration
 				end
 			end
 			
-			%w(HierarchicalRequirement Defect DefectSuite Task TestCase TestSet).each do |wp|
-				@@rw_attrs[wp] = @@rw_attrs[wp] + %w(Name Notes Owner Tags Package Description FormattedID Project).to_set
+			if c.version.to_f < 1.27
+  			%w(HierarchicalRequirement Defect DefectSuite Task TestCase TestSet).each do |wp|
+  				@@rw_attrs[wp] = @@rw_attrs[wp] + %w(Name Notes Owner Tags Package Description FormattedID Project).to_set
+  			end
 			end
 			
 			%w(HierarchicalRequirement Defect DefectSuite Task TestCase TestSet).each do |wp|
