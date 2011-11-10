@@ -59,7 +59,7 @@ module ArtifactMigration
 				progress = ProgressBar.new 200, "Importing #{type.to_s.titleize}", :label, :bar, :counter, :rate, :eta
 			end
 
-			[:end_type_import, :end_update_story_parents, :end_update_story_predecessors, :end_update_artifact_statuses, :end_test_folder_reparent, :end_update_defect_duplicates, :end_attachment_import].each do |event|
+			[:end_type_import, :end_update_story_parents, :end_update_portfolio_item_parents, :end_update_story_predecessors, :end_update_artifact_statuses, :end_test_folder_reparent, :end_update_defect_duplicates, :end_attachment_import].each do |event|
 				Importer.on(event) do |type| 
 					puts "" if progress.count > 0
 					progress = nil
@@ -76,11 +76,13 @@ module ArtifactMigration
 					
 			end
 						
-			[:import_type_count, :begin_update_story_parents, :begin_update_story_predecessors, :begin_test_folder_reparent, :begin_update_defect_duplicates, :begin_attachment_import].each do |event|
+			[:import_type_count, :begin_update_story_parents, :begin_update_portfolio_item_parents, :begin_update_story_predecessors, :begin_test_folder_reparent, :begin_update_defect_duplicates, :begin_attachment_import].each do |event|
 				Importer.on(event) do |count|					
 					label = case event
 						when :begin_update_story_parents
 							"Updating Story Parents"
+						when :begin_update_portfolio_item_parents
+							"Updating Portfolio Parents"
 						when :begin_update_story_predecessors
 							"Updating Story Predecessors"
 						when :begin_update_artifact_statuses
