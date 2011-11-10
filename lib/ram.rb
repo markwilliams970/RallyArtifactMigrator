@@ -8,12 +8,11 @@ require 'active_record'
 module ArtifactMigration
 	extend ActiveSupport::Autoload
 	
-	VALID_TYPES = [:tag, :release, :iteration, :hierarchical_requirement, :defect, :defect_suite, :test_folder, :test_set, :test_case, :test_case_step, :test_case_result, :task].to_set
-	RQM_TYPES = [:test_set, :test_folder].to_set
-	TYPICAL_TYPES = VALID_TYPES - RQM_TYPES
-	ARTIFACT_TYPES = [:hierarchical_requirement, :defect, :defect_suite, :test_case, :task]
-	
-	RALLY_API_VERSION = "1.25"
+	EE_TYPES = [:tag, :release, :iteration, :hierarchical_requirement, :defect, :defect_suite, :test_case, :test_case_step, :test_case_result, :task].to_set
+	UE_TYPES = [:test_set, :test_folder, :portfolio_item].to_set + EE_TYPES
+	ARTIFACT_TYPES = [:portfolio_item, :hierarchical_requirement, :defect, :defect_suite, :test_case, :task]
+
+	RALLY_API_VERSION = "1.27"
 	
 	VERSION = File.read(File.join(File.dirname(__FILE__), '..', 'VERSION'))
 	

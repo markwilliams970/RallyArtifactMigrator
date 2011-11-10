@@ -68,12 +68,12 @@ module ArtifactMigration
 			@migration_types << type
 		end
 		
-		def migrate_typical_types
-			ArtifactMigration::TYPICAL_TYPES.each { |t| migrate_type t }
+		def migrate_ee_types
+			ArtifactMigration::EE_TYPES.each { |t| migrate_type t }
 		end
 		
-		def migrate_all_types
-			ArtifactMigration::VALID_TYPES.each { |t| migrate_type t }
+		def migrate_ue_types
+			ArtifactMigration::UE_TYPES.each { |t| migrate_type t }
 		end
 		
 		def migrate_attachments

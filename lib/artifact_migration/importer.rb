@@ -15,7 +15,7 @@ module ArtifactMigration
 			config = Configuration.singleton.target_config
 			
 			emit :begin_import
-			[:tag, :release, :iteration, :hierarchical_requirement, :test_folder, :test_case, :test_case_step, :test_set, :test_case_result, :defect, :defect_suite, :task].each do |type|
+			[:tag, :release, :iteration, :portfolio_item, :hierarchical_requirement, :test_folder, :test_case, :test_case_step, :test_set, :test_case_result, :defect, :defect_suite, :task].each do |type|
 				Logger.info "Importing #{type.to_s.humanize}" if config.migration_types.include? type
 
 				if config.migration_types.include? type
@@ -213,15 +213,13 @@ module ArtifactMigration
 				emit :loop
 			end if klass
 		end
-		
-		def self.update_story_parents
-			return unless ArtifactMigration::RallyArtifacts::HierarchicalRequirement.column_names.include? 'parent'
-			Logger.info "Updating Story Parents"
-			emit :begin_update_story_parents, ArtifactMigration::RallyArtifacts::HierarchicalRequirement.count
+
+		def self.update_parents(type)
+		  klass = ArtifactMigration::RallyArtifacts.get_artifact_class(type)
 			
-			ArtifactMigration::RallyArtifacts::HierarchicalRequirement.all.each do |story|
+			klass.all.each do |story|
 				unless ImportTransactionLog.readonly.where("object_i_d = ? AND transaction_type = ?", story.object_i_d, 'reparent').exists?
-					Logger.debug "Looking at story '#{story.object_i_d} - #{story.name}'"
+					Logger.debug "Looking at #{type} '#{story.object_i_d} - #{story.name}'"
 					if story.parent && !story.parent.empty?
 						new_story = @@object_manager.get_mapped_artifact story.object_i_d
 						new_story_parent = @@object_manager.get_mapped_artifact story.parent.to_i
@@ -235,17 +233,35 @@ module ArtifactMigration
 							
 							Logger.info "Updated parent for '#{new_story}'"
 						else
-							Logger.info "Story #{story.object_i_d} has a parent, but it was not exported.  Was it in another project?"
+							Logger.info "#{type} #{story.object_i_d} has a parent, but it was not exported.  Was it in another project?"
 						end
 					end
 				end
 				
 				emit :loop
 			end
+		end
+
+		def self.update_story_parents
+			return unless ArtifactMigration::RallyArtifacts::HierarchicalRequirement.column_names.include? 'parent'
+			Logger.info "Updating Story Parents"
+			emit :begin_update_story_parents, ArtifactMigration::RallyArtifacts::HierarchicalRequirement.count
 			
+      update_parents :hierarchical_requirement
+      
 			emit :end_update_story_parents
 		end
 		
+		def self.update_portfolio_parents
+			return unless ArtifactMigration::RallyArtifacts::PortfolioItem.column_names.include? 'parent'
+			Logger.info "Updating Story Parents"
+			emit :begin_update_portfolio_item_parents, ArtifactMigration::RallyArtifacts::PortfolioItem.count
+			
+      update_parents :portfolio_item
+      
+			emit :end_update_portfolio_item_parents
+	  end
+	  
 		def self.update_story_predecessors
 			return unless ArtifactMigration::RallyArtifacts::HierarchicalRequirement.column_names.include? 'predecessors'
 			Logger.info "Updating Story Predecessors"

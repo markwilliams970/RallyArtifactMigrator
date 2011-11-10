@@ -12,13 +12,13 @@ ArtifactMigration::Configuration.define do |config|
 		source.workspace_oid = 729424
 		source.project_scope_up = false
 		source.project_scope_down = false
-		source.version = "1.25"
+		source.version = "1.27"
 		
 		source.add_project_oid 729688
 		source.add_project_oid 729701
 		source.add_project_oid 729727
 		
-		source.migrate_all_types # Exports all types to the intermediate database
+		source.migrate_ue_types # Migrates all UE types (includes test sets, test folders and portfolio items)
 		source.migrate_attachments
 		
 		[:hierarchical_requirement, :defect, :defect_suite, :test_case].each { |type| source.ignore_field type, :package }
@@ -32,13 +32,13 @@ ArtifactMigration::Configuration.define do |config|
 		target.workspace_oid = 11111111
 		target.project_scope_up = true
 		target.project_scope_down = true
-		target.version = "1.25"
+		target.version = "1.27"
 		
 		target.default_project_oid = 22222222
 		target.map_project_oid :from => 729701, :to => 33333333
 		target.map_project_oid :from => 729727, :to => 44444444
 		
-		target.migrate_typical_types # Typical types do not include RQM Types (Test Folder, Test Set, ect.)
+		target.migrate_ee_types # EE types do not include RQM Types (Test Folder, Test Set, ect.) or Portfolio Items
 		target.migrate_attachments
 		
 		#target.map_username_by_csv :file => 'users.csv', :from => 'Source Username Column Name', :to => 'Target Username Column Name'
