@@ -67,7 +67,7 @@ module ArtifactMigration
 			source = RallyRestAPI.new :username => config_s.username, :password => config_s.password, :base_url => config_s.server, :version => ArtifactMigration::RALLY_API_VERSION, :http_headers => ArtifactMigration::INTEGRATION_HEADER
 			target = RallyRestAPI.new :username => config_t.username, :password => config_t.password, :base_url => config_t.server, :version => ArtifactMigration::RALLY_API_VERSION, :http_headers => ArtifactMigration::INTEGRATION_HEADER
 			ws_s = ArtifactMigration::Helper.find_workspace(source, config_s.workspace_oid)
-			ws_t = ArtifactMigration::Helper.find_workspace(source, config_t.workspace_oid)
+			ws_t = ArtifactMigration::Helper.find_workspace(target, config_t.workspace_oid)
 			
 			@@log.info("---------Validating Project Mapping-------------")
 			config_t.project_mapping.each do |k, v|

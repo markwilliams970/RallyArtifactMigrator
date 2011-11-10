@@ -59,7 +59,8 @@ module ArtifactMigration
 		def self.map_field(type, field)
 			config = Configuration.singleton.target_config
 			
-			return field unless (config.field_mapping.has_key? type)
+			Logger.debug "Does field mapping have type [#{type}] defined? - #{config.field_mapping.has_key? type}"
+			return field unless config.field_mapping.has_key? type
 			
 			if config.field_mapping[type].has_key? field
 				Logger.debug "Mapping field [#{field}] to field [#{config.field_mapping[type][field]}] for type [#{type}]"
@@ -133,6 +134,7 @@ module ArtifactMigration
 					attrs[:project] = map_project obj.project 																		if klass.column_names.include? 'project' #&& obj.project
 					attrs[:work_product] = @@object_manager.get_mapped_artifact obj.work_product 	if klass.column_names.include? 'work_product' #&& obj.work_product
 					attrs[:requirement] = @@object_manager.get_mapped_artifact obj.requirement 		if klass.column_names.include? 'requirement' #&& obj.requirement
+					attrs[:portfolio_item] = @@object_manager.get_mapped_artifact obj.portfolio_item 		if klass.column_names.include? 'portfolio_item' #&& obj.requirement
 					attrs[:test_folder] = @@object_manager.get_mapped_artifact obj.test_folder		if klass.column_names.include? 'test_folder' #&& obj.test_case
 					attrs[:test_case] = @@object_manager.get_mapped_artifact obj.test_case 				if klass.column_names.include? 'test_case' #&& obj.test_case
 					attrs[:test_case_result] = @@object_manager.get_mapped_artifact obj.test_case_result 		if klass.column_names.include? 'test_case_result' #&& obj.test_case_result

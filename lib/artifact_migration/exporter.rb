@@ -121,7 +121,7 @@ module ArtifactMigration
 					artifact = nil
 					
 					o.each do |k, v| 
-						if %w(Project Requirement WorkProduct TestCase Defect DefectSuite TestFolder Parent TestCaseResult Iteration Release TestSet).include? k
+						if %w(Project PortfolioItem Requirement WorkProduct TestCase Defect DefectSuite TestFolder Parent TestCaseResult Iteration Release TestSet).include? k
 							attrs[k.to_s.underscore.to_sym] = v["ObjectID"] if v
 						elsif %w(Owner SubmittedBy).include? k
 							attrs[k.to_s.underscore.to_sym] = v["UserName"] if v
