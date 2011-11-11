@@ -126,6 +126,10 @@ module ArtifactMigration
 					o.each do |k, v| 
 						if %w(Project PortfolioItem Requirement WorkProduct TestCase Defect DefectSuite TestFolder Parent TestCaseResult Iteration Release TestSet).include? k
 							attrs[k.to_s.underscore.to_sym] = v["ObjectID"] if v
+						elsif %w(PreliminaryEstimate Type).include? k # TODO: Make generic
+						  if (type == :portfolio_item)
+						    attrs[k.to_s.underscore.to_sym] = v['Name']
+						  end
 						elsif %w(Owner SubmittedBy).include? k
 							attrs[k.to_s.underscore.to_sym] = v["UserName"] if v
 						elsif %w(Tags Predecessors Successors TestCases Duplicates).include? k

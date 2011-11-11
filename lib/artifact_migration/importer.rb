@@ -48,6 +48,7 @@ module ArtifactMigration
 			@@workspace = Helper.find_workspace @@rally_ds, config.workspace_oid
 			@@projects = {}
 			@@user_cache = {}
+			@@pi_attr_cache = {}
 			
 			@@object_manager = ObjectManager.new @@rally_ds, @@workspace
 		end
@@ -55,6 +56,13 @@ module ArtifactMigration
 		def self.object_manager
 			@@object_manager
 		end
+		
+		def self.find_portfolio_item_attribute(type, name)
+		  @@pi_attr_cache[type] = {} unless @@pi_attr_cache.has_key? type
+		  return @@pi_attr_cache[type][name] if @@pi_attr_cache[type].has_key? name
+		  
+		  
+	  end
 		
 		def self.map_field(type, field)
 			config = Configuration.singleton.target_config
