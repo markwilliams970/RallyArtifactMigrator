@@ -128,7 +128,9 @@ module ArtifactMigration
 							attrs[k.to_s.underscore.to_sym] = v["ObjectID"] if v
 						elsif %w(PreliminaryEstimate Type).include? k # TODO: Make generic
 						  if (type == :portfolio_item)
-						    attrs[k.to_s.underscore.to_sym] = v['Name']
+						    #Logger.debug "Transforming #{k} - #{v['Name']}" unless v.nil?
+						    attrs[k.to_s.underscore.to_sym] = v['Name'] unless v.nil?
+						    #Logger.debug "#{k.to_s.underscore.to_sym} => #{attrs[k.to_s.underscore.to_sym]}"
 						  end
 						elsif %w(Owner SubmittedBy).include? k
 							attrs[k.to_s.underscore.to_sym] = v["UserName"] if v
@@ -153,7 +155,7 @@ module ArtifactMigration
 					c.ignore_fields[type].each { |a| attrs.delete a } if c.ignore_fields.has_key? type
 					
 					attrs[:object_i_d] = o["ObjectID"]
-					
+					#Logger.debug(attrs)
 					artifact = klass.create(attrs) unless klass.find_by_object_i_d(o['ObjectID'].to_i)
 					ObjectTypeMap.create(:object_i_d => artifact.object_i_d, :artifact_type => type.to_s) if artifact and ObjectTypeMap.find_by_object_i_d(artifact.object_i_d).nil?
 					

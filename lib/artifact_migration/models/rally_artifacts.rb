@@ -9,6 +9,7 @@ module ArtifactMigration
 		def self.create_artifact_classes
 			ArtifactMigration::UE_TYPES.each do |type|
 				klass = ArtifactMigration::RallyArtifacts.const_set(type.to_s.classify, Class.new(ActiveRecord::Base))
+				klass.set_inheritance_column "inheritance_type"
 				#klass.const_set(:is_rally_artifact, true)
 			end
 			

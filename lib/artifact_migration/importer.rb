@@ -37,6 +37,9 @@ module ArtifactMigration
 		end
 		
 		def self.prepare
+		  # Next line is a hack
+		  RallyRestAPI::VALID_TYPES = RallyRestAPI::VALID_TYPES + %w(portfolio_item type preliminary_estimate)
+      
 			ArtifactMigration::Schema.create_transaction_log_schema
 			ArtifactMigration::Schema.create_object_id_map_schema			
 			ArtifactMigration::Schema.create_object_cache_schema
@@ -61,7 +64,11 @@ module ArtifactMigration
 		  @@pi_attr_cache[type] = {} unless @@pi_attr_cache.has_key? type
 		  return @@pi_attr_cache[type][name] if @@pi_attr_cache[type].has_key? name
 		  
+		  res = @@rally_ds.find(type) { eq "Name", name }
+		  Logger.debug "Found #{res.size} results for #{type}::#{name}"
+		  @@pi_attr_cache[type][name] = res.first
 		  
+		  @@pi_attr_cache[type][name]
 	  end
 		
 		def self.map_field(type, field)
@@ -150,6 +157,11 @@ module ArtifactMigration
 					attrs[:owner] = map_user obj.owner 																						if klass.column_names.include? 'owner' #&& obj.owner
 					attrs[:tester] = map_user obj.tester 																					if klass.column_names.include? 'tester' #&& obj.tester
 					attrs[:submitted_by] = map_user obj.submitted_by 															if klass.column_names.include? 'submitted_by' #&& obj.submitted_by
+
+          if type == :portfolio_item
+					  attrs[:type] = find_portfolio_item_attribute :type, attrs[:type]              if klass.column_names.include? 'preliminary_estimate'
+					  attrs[:preliminary_estimate] = find_portfolio_item_attribute :preliminary_estimate, attrs[:preliminary_estimate] if if klass.column_names.include? 'preliminary_estimate'
+					end
 					
 					if klass.column_names.include? 'plan_estimate' #&& obj.rank
 						if attrs[:plan_estimate] != ''
