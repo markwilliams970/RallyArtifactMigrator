@@ -92,13 +92,14 @@ module ArtifactMigration
 			valid &&= assert("Validating user is authenticated") { !@@rally.user.nil? }
 			
 			valid &&= assert("Validating subscription has Rally Quality Manager enabled") { not (@@rally.user.subscription.modules.to_s =~ /Quality/).nil? } if (config.migration_types.include? :test_folder) or (config.migration_types.include? :test_set)
+			valid &&= assert("Validating subscription has Rally Product Manager enabled") { not (@@rally.user.subscription.modules.to_s =~ /Product/).nil? } if (config.migration_types.include? :portfolio_item)
 
 			ws = ArtifactMigration::Helper.find_workspace(@@rally, config.workspace_oid)
 			valid &&= assert("Validating a workspace was found") { !ws.nil? }
 			valid &&= assert("Validating supplied workspace_oid is valid") { ws.object_i_d.to_i == config.workspace_oid } if valid
 			
 			config.migration_types.each do |type|
-				valid &&= assert("Validating #{type.to_s.titleize} is a valid type") { ArtifactMigration::VALID_TYPES.include? type }
+				valid &&= assert("Validating #{type.to_s.titleize} is a valid type") { ArtifactMigration::UE_TYPES.include? type }
 			end
 			
 			valid

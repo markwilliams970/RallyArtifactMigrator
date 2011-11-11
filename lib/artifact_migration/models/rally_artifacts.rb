@@ -7,7 +7,7 @@ module ArtifactMigration
 
 	module RallyArtifacts		
 		def self.create_artifact_classes
-			ArtifactMigration::VALID_TYPES.each do |type|
+			ArtifactMigration::UE_TYPES.each do |type|
 				klass = ArtifactMigration::RallyArtifacts.const_set(type.to_s.classify, Class.new(ActiveRecord::Base))
 				#klass.const_set(:is_rally_artifact, true)
 			end

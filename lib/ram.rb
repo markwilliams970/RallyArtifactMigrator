@@ -9,7 +9,7 @@ module ArtifactMigration
 	extend ActiveSupport::Autoload
 	
 	EE_TYPES = [:tag, :release, :iteration, :hierarchical_requirement, :defect, :defect_suite, :test_case, :test_case_step, :test_case_result, :task].to_set
-	UE_TYPES = [:test_set, :test_folder, :portfolio_item].to_set + EE_TYPES
+	UE_TYPES = [:test_set, :test_folder, :portfolio_item].to_set + ArtifactMigration::EE_TYPES
 	ARTIFACT_TYPES = [:portfolio_item, :hierarchical_requirement, :defect, :defect_suite, :test_case, :task]
 
 	RALLY_API_VERSION = "1.27"

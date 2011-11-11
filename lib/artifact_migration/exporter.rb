@@ -31,7 +31,8 @@ module ArtifactMigration
 			@@rally_ds = RallyRestAPI.new :username => c.username, :password => c.password, :base_url => c.server, :version => c.version, :http_headers => ArtifactMigration::INTEGRATION_HEADER
 						
 			emit :begin_export
-			[:tag, :release, :iteration, :hierarchical_requirement, :test_folder, :test_case, :test_case_step, :test_set, :test_case_result, :defect, :defect_suite, :task].each do |type|
+			ArtifactMigration::UE_TYPES.each do |type|
+			  Logger.debug "Checking for type #{type} - #{c.migration_types.include? type}"
 				if c.migration_types.include? type
 					emit :begin_type_export, type
 					export_type type 
