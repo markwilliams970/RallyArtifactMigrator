@@ -5,6 +5,12 @@ require 'net/http'
 require 'net/https'
 require 'events'
 
+# This is a hack!
+O_ALLOWED_TYPES = RallyRestAPI::ALLOWED_TYPES
+class RallyRestAPI
+  ALLOWED_TYPES = O_ALLOWED_TYPES + %w(portfolio_item type preliminary_estimate)
+end
+
 module ArtifactMigration
 	class Importer
 		extend Events::Emitter
@@ -24,6 +30,7 @@ module ArtifactMigration
 					emit :end_type_import, type
 				end
 
+				update_portfolio_parents if config.migration_types.include?(type) and type == :portfolio_item
 				update_story_parents if config.migration_types.include?(type) and type == :hierarchical_requirement
 				update_story_predecessors if config.migration_types.include?(type) and type == :hierarchical_requirement
 				update_defect_duplicates if config.migration_types.include?(type) and type == :defect
@@ -36,10 +43,7 @@ module ArtifactMigration
 			emit :end_import
 		end
 		
-		def self.prepare
-		  # Next line is a hack
-		  RallyRestAPI::VALID_TYPES = RallyRestAPI::VALID_TYPES + %w(portfolio_item type preliminary_estimate)
-      
+		def self.prepare      
 			ArtifactMigration::Schema.create_transaction_log_schema
 			ArtifactMigration::Schema.create_object_id_map_schema			
 			ArtifactMigration::Schema.create_object_cache_schema
@@ -64,7 +68,7 @@ module ArtifactMigration
 		  @@pi_attr_cache[type] = {} unless @@pi_attr_cache.has_key? type
 		  return @@pi_attr_cache[type][name] if @@pi_attr_cache[type].has_key? name
 		  
-		  res = @@rally_ds.find(type) { eq "Name", name }
+		  res = @@rally_ds.find(type) { equal :name, name }
 		  Logger.debug "Found #{res.size} results for #{type}::#{name}"
 		  @@pi_attr_cache[type][name] = res.first
 		  
@@ -159,8 +163,8 @@ module ArtifactMigration
 					attrs[:submitted_by] = map_user obj.submitted_by 															if klass.column_names.include? 'submitted_by' #&& obj.submitted_by
 
           if type == :portfolio_item
-					  attrs[:type] = find_portfolio_item_attribute :type, attrs[:type]              if klass.column_names.include? 'preliminary_estimate'
-					  attrs[:preliminary_estimate] = find_portfolio_item_attribute :preliminary_estimate, attrs[:preliminary_estimate] if if klass.column_names.include? 'preliminary_estimate'
+					  attrs[:type] = find_portfolio_item_attribute(:type, attrs[:type])            if klass.column_names.include? 'preliminary_estimate'
+					  attrs[:preliminary_estimate] = find_portfolio_item_attribute(:preliminary_estimate, attrs[:preliminary_estimate]) if klass.column_names.include? 'preliminary_estimate'
 					end
 					
 					if klass.column_names.include? 'plan_estimate' #&& obj.rank

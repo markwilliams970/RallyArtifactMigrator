@@ -61,7 +61,9 @@ module ArtifactMigration
 
 			[:end_type_import, :end_update_story_parents, :end_update_portfolio_item_parents, :end_update_story_predecessors, :end_update_artifact_statuses, :end_test_folder_reparent, :end_update_defect_duplicates, :end_attachment_import].each do |event|
 				Importer.on(event) do |type| 
-					puts "" if progress.count > 0
+			    if progress
+					  puts "" if progress.count > 0
+					end
 					progress = nil
 				end
 			end
