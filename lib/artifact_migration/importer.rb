@@ -45,6 +45,7 @@ module ArtifactMigration
 		
 		def self.prepare      
 			ArtifactMigration::Schema.create_transaction_log_schema
+			ArtifactMigration::Schema.create_issue_log_schema			
 			ArtifactMigration::Schema.create_object_id_map_schema			
 			ArtifactMigration::Schema.create_object_cache_schema
 			
@@ -221,13 +222,40 @@ module ArtifactMigration
 					attrs.delete_if { |k, v| v.nil? }
 					
 					if valid
-						Logger.debug "Creating #{attrs[:name]} for project '#{attrs[:project]}' in workspace '#{attrs[:workspace]}'"
-						Logger.debug "#{attrs}"
-						artifact = @@rally_ds.create(type, attrs)
-						Logger.info "Created #{type.to_s.humanize}: #{artifact.name}"
+					  
+					  begin
+  						Logger.debug "Creating #{attrs[:name]} for project '#{attrs[:project]}' in workspace '#{attrs[:workspace]}'"
+  						Logger.debug "#{attrs}"
+  						artifact = @@rally_ds.create(type, attrs)
+  						Logger.info "Created #{type.to_s.humanize}: #{artifact.name}"
 										
-						@@object_manager.map_artifact obj.object_i_d, artifact.object_i_d, artifact
-						ImportTransactionLog.create(:object_i_d => obj.object_i_d, :transaction_type => 'import')
+  						@@object_manager.map_artifact obj.object_i_d, artifact.object_i_d, artifact
+  						ImportTransactionLog.create(:object_i_d => obj.object_i_d, :transaction_type => 'import')
+  					rescue
+  					  begin
+    						Logger.debug "[WITHOUT DESCRIPTION] Creating #{attrs[:name]} for project '#{attrs[:project]}' in workspace '#{attrs[:workspace]}'"
+    						attrs.delete :description
+    						Logger.debug "#{attrs}"
+    						artifact = @@rally_ds.create(type, attrs)
+    						Logger.info "[WITHOUT DESCRIPTION] Created #{type.to_s.humanize}: #{artifact.name}"
+
+    						@@object_manager.map_artifact obj.object_i_d, artifact.object_i_d, artifact
+    						ImportTransactionLog.create(:object_i_d => obj.object_i_d, :transaction_type => 'import')
+    						IssueTransactionLog.create(:object_i_d => obg.object_i_d, :severity => 'warning', :issue_type => 'description')
+    					rescue
+    					  begin
+      						Logger.debug "[SHELL] Creating #{attrs[:name]} for project '#{attrs[:project]}' in workspace '#{attrs[:workspace]}'"
+      						artifact = @@rally_ds.create(type, :name => attrs[:name], :workspace => attrs[:workspace], :project => attrs[:project])
+      						Logger.info "[SHELL] Created #{type.to_s.humanize}: #{artifact.name}"
+
+      						@@object_manager.map_artifact obj.object_i_d, artifact.object_i_d, artifact
+      						ImportTransactionLog.create(:object_i_d => obj.object_i_d, :transaction_type => 'import')
+      						IssueTransactionLog.create(:object_i_d => obg.object_i_d, :severity => 'warning', :issue_type => 'shell')
+  					    rescue
+      						IssueTransactionLog.create(:object_i_d => obg.object_i_d, :severity => 'error', :issue_type => 'creation')
+					      end
+  					  end
+					  end
 						emit :imported_artifact, type, artifact
 					end
 				else

@@ -18,6 +18,23 @@ module ArtifactMigration
 			end
 		end
 
+		def self.create_issue_log_schema
+			ActiveRecord::Schema.define do
+				ActiveRecord::Migration.verbose = false
+				unless IssueTransactionLog.table_exists?
+					create_table :issue_transaction_logs, :id => false do |t|
+						t.column :object_i_d, :integer
+						t.column :issue_type, :string
+						t.column :severity, :string
+					end
+					
+					add_index :issue_transaction_logs, :object_i_d
+					add_index :issue_transaction_logs, :issue_type
+					add_index :issue_transaction_logs, :severity
+				end
+			end
+		end
+
 		def self.create_object_id_map_schema
 			ActiveRecord::Schema.define do
 				ActiveRecord::Migration.verbose = false

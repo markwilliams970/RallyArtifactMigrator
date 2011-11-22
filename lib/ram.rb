@@ -31,12 +31,14 @@ module ArtifactMigration
 		autoload :Schema
 		autoload :Importer
 		autoload :Exporter
+		autoload :ProjectExporter
 		autoload :ProgressBar
 		autoload :CLI
 		autoload :ObjectManager
 		
 		autoload_under 'models' do
 			autoload :ImportTransactionLog
+			autoload :IssueTransactionLog
 			autoload :ObjectCache
 			autoload :ObjectIdMap
 			autoload :ObjectTypeMap

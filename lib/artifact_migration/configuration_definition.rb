@@ -5,6 +5,7 @@
 =end
 
 require 'active_support/inflector'
+require 'yaml'
 
 if RUBY_VERSION < '1.9.0'
 	require 'fastercsv'
@@ -100,5 +101,9 @@ module ArtifactMigration
 				@username_mapping[user[from_column]] = user[to_column]
 			end
 		end
+		
+		def map_projects_by_yaml(filename)
+		  YAML.load(File.open filename).each { |k, v| map_project_id :from => k, :to => v }
+	  end
 	end
 end
