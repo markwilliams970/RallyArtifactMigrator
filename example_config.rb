@@ -20,6 +20,7 @@ ArtifactMigration::Configuration.define do |config|
 		
 		source.migrate_ue_types # Migrates all UE types (includes test sets, test folders and portfolio items)
 		source.migrate_attachments
+		source.migrate_projects
 		
 		[:hierarchical_requirement, :defect, :defect_suite, :test_case].each { |type| source.ignore_field type, :package }
 		
@@ -57,9 +58,9 @@ ArtifactMigration::Configuration.define do |config|
 =end
 	end
 	
-	output = Logger.new "info.log"
-	output.level = Logger::INFO
-	config.add_logger output
+	#output = Logger.new "info.log"
+	#output.level = Logger::INFO
+	#config.add_logger output
 	
 	debug = Logger.new "debug.log"
 	debug.level = Logger::DEBUG	

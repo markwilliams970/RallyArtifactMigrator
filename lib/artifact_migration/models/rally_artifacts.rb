@@ -4,6 +4,15 @@ require 'active_support/inflector'
 module ArtifactMigration
 	class Attachment < ActiveRecord::Base
 	end
+	
+	class Project < ActiveRecord::Base
+  end
+  
+  class ProjectPermission < ActiveRecord::Base
+  end
+
+  class WorkspacePermission < ActiveRecord::Base
+  end
 
 	module RallyArtifacts		
 		def self.create_artifact_classes

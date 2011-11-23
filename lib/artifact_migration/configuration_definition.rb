@@ -35,6 +35,7 @@ module ArtifactMigration
 		attr_reader :field_mapping
 		attr_reader :username_mapping
 		attr_reader :migrate_attachments_flag
+		attr_reader :migrate_projects_flag
 		
 		def initialize
 			@project_oids = [].to_set
@@ -48,6 +49,8 @@ module ArtifactMigration
 
 			@ignore_fields = {}
 			@field_mapping = {}
+			@migrate_projects_flag = false
+			@default_project_oid = nil
 		end
 				
 		def ignore_field(type, field_name)
@@ -80,6 +83,10 @@ module ArtifactMigration
 		def migrate_attachments
 			@migrate_attachments_flag = true
 		end
+		
+		def migrate_projects
+		  @migrate_projects_flag = true
+	  end
 		
 		def map_project_oid(options = {})
 			@project_mapping[options[:from]] = options[:to]

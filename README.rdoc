@@ -7,18 +7,18 @@ Rally Artifact Migration utility.
 === Mac OS X
 
 * Install Xcode (for compiling SQLite3)
-* From the command line type: sudo gem install ram-0.3.5.RPM.gem --no-rdoc --no-ri
+* From the command line type: sudo gem install ram-0.4.0.gem --no-rdoc --no-ri
 
 === Ubuntu
 
 * Install GCC (for compiling SQLite3)
 * sudo apt-get install libsqlite3-dev
-* sudo gem install ram-0.3.5.RPM.gem --no-rdoc --no-ri
+* sudo gem install ram-0.4.0.gem --no-rdoc --no-ri
 
 === Windows
 
 * Not sure about prereqs, but you need to be able to install SQLite3
-* From the command line type: gem install ram-0.3.5.RPM.gem --no-rdoc --no-ri
+* From the command line type: gem install ram-0.4.0.gem --no-rdoc --no-ri
 
 == Release Notes
 
@@ -26,6 +26,11 @@ Rally Artifact Migration utility.
 
 * Custom fields that contain special characters are not migrated.
 * Custom fields that have multiple capital letters in a row are not migrated.
+
+=== 0.4.0
+* [FEATURE] Migrate Projects
+* [FEATURE] Migrate User Permissions (not users; that is comming)
+* [FEATURE] Continue import on error if possible (new table that will list which artifacts were partially imported)
 
 === 0.3.5
 * [FEATURE] Added RPM support

@@ -31,6 +31,11 @@ module ArtifactMigration
 			@@rally_ds = RallyRestAPI.new :username => c.username, :password => c.password, :base_url => c.server, :version => c.version, :http_headers => ArtifactMigration::INTEGRATION_HEADER
 						
 			emit :begin_export
+			
+			if c.migrate_projects_flag
+			  self.export_projects
+		  end
+			
 			ArtifactMigration::UE_TYPES.each do |type|
 			  Logger.debug "Checking for type #{type} - #{c.migration_types.include? type}"
 				if c.migration_types.include? type
@@ -56,6 +61,7 @@ module ArtifactMigration
 			
 			Schema.create_artifact_schemas
 			Schema.create_object_type_map_schema
+      Schema.create_project_scheme
 			Schema.create_attachment_scheme
 			
 			attrs = {}
@@ -164,6 +170,64 @@ module ArtifactMigration
 				end
 			end
 		end
+		
+		def self.export_projects
+			Logger.info("Exporting Projects")
+
+			c = Configuration.singleton.source_config
+
+			ret = Helper.batch_toolkit :url => c.server,
+				:username => c.username,
+				:password => c.password,
+				:version => c.version,
+				:workspace => c.workspace_oid,
+				:project_scope_up => c.project_scope_up,
+				:project_scope_down => c.project_scope_down,
+				:type => :project,
+				:fields => %w(ObjectID Name Owner Description Parent State UserName).to_set
+
+      projects = Hash[ ret['Results'].collect { |elt| [elt['ObjectID'], elt] } ]
+			c.project_oids.each do |poid|
+				Logger.info("Exporting Project Info for Project OID [#{poid}]")					
+				p = projects[poid]
+				
+				pp = nil
+				ppoid = -1
+				
+				pp = p["Parent"] if p.has_key? "Parent"
+				ppoid = pp["ObjectID"] if pp
+				
+				ArtifactMigration::Project.find_or_create_by_source_object_i_d(:source_object_i_d => p['ObjectID'], :source_parent_i_d => ppoid, :name => p["Name"], :description => p["Description"], :owner => p["Owner"]["UserName"], :state => p["State"])
+			end
+			
+			ret = Helper.batch_toolkit :url => c.server,
+				:username => c.username,
+				:password => c.password,
+				:version => c.version,
+				:workspace => c.workspace_oid,
+				:project_scope_up => c.project_scope_up,
+				:project_scope_down => c.project_scope_down,
+				:type => :workspace_permission,
+				:fields => %w(ObjectID User Role Workspace UserName Name).to_set
+			
+			ret["Results"].each { |wp| ArtifactMigration::WorkspacePermission.create(:workspace_i_d => wp["Workspace"]["ObjectID"], :user => wp["User"]["UserName"], :role => wp["Role"]) }
+			
+			ret = Helper.batch_toolkit :url => c.server,
+				:username => c.username,
+				:password => c.password,
+				:version => c.version,
+				:workspace => c.workspace_oid,
+				:project_scope_up => c.project_scope_up,
+				:project_scope_down => c.project_scope_down,
+				:type => :project_permission,
+				:fields => %w(ObjectID User Role Project UserName Name).to_set
+			
+			ret["Results"].each do |pp|
+			  if projects.has_key? pp["Project"]["ObjectID"]
+			    ArtifactMigration::ProjectPermission.create(:project_i_d => pp["Project"]["ObjectID"], :user => pp["User"]["UserName"], :role => pp["Role"])
+		    end
+		  end
+	  end
 	
 		def self.export_attachments
 			Logger.info("Exporting Attachments")

@@ -21,6 +21,9 @@ module ArtifactMigration
 			config = Configuration.singleton.target_config
 			
 			emit :begin_import
+			
+			import_projects if config.migrate_projects_flag
+			
 			[:tag, :release, :iteration, :portfolio_item, :hierarchical_requirement, :test_folder, :test_case, :test_case_step, :test_set, :test_case_result, :defect, :defect_suite, :task].each do |type|
 				Logger.info "Importing #{type.to_s.humanize}" if config.migration_types.include? type
 
@@ -93,6 +96,7 @@ module ArtifactMigration
 		def self.map_project(old_oid)
 			config = Configuration.singleton.target_config
 			new_oid = config.project_mapping.has_key?(old_oid.to_i) ? config.project_mapping[old_oid.to_i] : config.default_project_oid
+			project = nil
 			
 			if new_oid
 				project = @@projects[new_oid]
@@ -102,7 +106,7 @@ module ArtifactMigration
 				end
 			end
 			
-			Logger.debug "Project OID #{old_oid} maps to #{project.object_i_d}"
+			Logger.debug "Project OID #{old_oid} maps to #{project.object_i_d}" if project
 			project
 		end
 		
@@ -132,6 +136,89 @@ module ArtifactMigration
 		end
 		
 		protected
+		def self.import_projects
+			config = Configuration.singleton.target_config
+			
+			ArtifactMigration::Project.all.each do |project|
+			  new_oid = config.project_mapping[project.source_object_i_d]
+			  next if new_oid
+
+			  if project.target_object_i_d
+			    config.map_project_oid :from => project.source_object_i_d, :to => project.target_object_i_d
+			    next
+		    end
+			  
+			  owner = map_user(project.owner)
+			  newp = @@rally_ds.create(:project, :name => project.name, :description => project.description, :state => project.state, :owner => owner, :workspae => @@workspace)
+			  #Logger.debug newp
+			  if newp
+			    # This line is throwing an exception.  Don't know why.  Creating workaround
+			    #project.update_attribute :target_object_i_d, newp.object_i_d
+			    ####  Workaround
+			    st = ActiveRecord::Base.connection.raw_connection.prepare("UPDATE projects SET target_object_i_d=? WHERE source_object_i_d=?")
+          st.execute(newp.object_i_d.to_s.to_i, project.source_object_i_d)
+          st.close
+			    #### End Workaround
+			    
+			    config.map_project_oid :from => project.source_object_i_d, :to => newp.object_i_d.to_s.to_i
+		    end
+		  end
+		  
+		  ArtifactMigration::Project.all.each do |project|
+		    if project.source_parent_i_d
+		      parent = map_project project.source_parent_i_d
+		      child = map_project project.source_object_i_d
+		      child.update :parent => parent
+		      Logger.debug "Updated Parent Project for #{project.name}"
+	      end
+			end
+
+			ret = Helper.batch_toolkit :url => config.server,
+				:username => config.username,
+				:password => config.password,
+				:version => config.version,
+				:workspace => config.workspace_oid,
+				:project_scope_up => config.project_scope_up,
+				:project_scope_down => config.project_scope_down,
+				:type => :workspace_permission,
+				:fields => %w(ObjectID User Role Workspace UserName Name).to_set
+			
+			wpmapping = ret["Results"].collect { |wp| "#{wp['Workspace']['ObjectID']}_#{wp['User']['UserName']}" }
+			Logger.debug "WPMapping - #{wpmapping}"
+			
+			ret = Helper.batch_toolkit :url => config.server,
+				:username => config.username,
+				:password => config.password,
+				:version => config.version,
+				:workspace => config.workspace_oid,
+				:project_scope_up => config.project_scope_up,
+				:project_scope_down => config.project_scope_down,
+				:type => :project_permission,
+				:fields => %w(ObjectID User Role Project UserName Name).to_set
+			
+			mapping = ret["Results"].collect { |pp| "#{pp['Project']['ObjectID']}_#{pp['User']['UserName']}" }
+			Logger.debug "PPMapping - #{mapping.size} - #{mapping}"
+			
+			ArtifactMigration::ProjectPermission.all.each do |pp|
+			  newp = map_project pp.project_i_d
+			  user = map_user pp.user
+			  
+			  next unless newp
+			  next if mapping.include? "#{newp.object_i_d}_#{pp.user}"
+	
+			  unless wpmapping.include? "#{config.workspace_oid}_#{pp.user}"
+			    role = ArtifactMigration::WorkspacePermission.find_by_workspace_i_d_and_user(Configuration.singleton.source_config.workspace_oid, pp.user).role
+			    Logger.debug "Adding Workspace Permission for #{pp.user} of #{role}"
+			    @@rally_ds.create(:workspace_permission, :workspace => @@workspace, :user => user, :role => role)
+			  else
+			    Logger.debug "User #{pp.user} is already in WOID #{config.workspace_oid}"
+		    end
+			  
+			  perm = @@rally_ds.create(:project_permission, :project => newp, :user => user, :role => pp.role)
+			  Logger.debug perm
+		  end
+	  end
+		
 		def self.import_type(type)
 			Logger.debug "Looking for class of type #{type.to_s.humanize}"
 			klass = ArtifactMigration::RallyArtifacts.get_artifact_class(type)
@@ -231,8 +318,9 @@ module ArtifactMigration
 										
   						@@object_manager.map_artifact obj.object_i_d, artifact.object_i_d, artifact
   						ImportTransactionLog.create(:object_i_d => obj.object_i_d, :transaction_type => 'import')
-  					rescue
+  					rescue Exception => e1
   					  begin
+  					    Logger.debug e1
     						Logger.debug "[WITHOUT DESCRIPTION] Creating #{attrs[:name]} for project '#{attrs[:project]}' in workspace '#{attrs[:workspace]}'"
     						attrs.delete :description
     						Logger.debug "#{attrs}"
@@ -241,18 +329,20 @@ module ArtifactMigration
 
     						@@object_manager.map_artifact obj.object_i_d, artifact.object_i_d, artifact
     						ImportTransactionLog.create(:object_i_d => obj.object_i_d, :transaction_type => 'import')
-    						IssueTransactionLog.create(:object_i_d => obg.object_i_d, :severity => 'warning', :issue_type => 'description')
-    					rescue
+    						IssueTransactionLog.create(:object_i_d => obj.object_i_d, :severity => 'warning', :issue_type => 'description')
+    					rescue Exception => e2
     					  begin
+    					    Logger.debug e2
       						Logger.debug "[SHELL] Creating #{attrs[:name]} for project '#{attrs[:project]}' in workspace '#{attrs[:workspace]}'"
       						artifact = @@rally_ds.create(type, :name => attrs[:name], :workspace => attrs[:workspace], :project => attrs[:project])
       						Logger.info "[SHELL] Created #{type.to_s.humanize}: #{artifact.name}"
 
       						@@object_manager.map_artifact obj.object_i_d, artifact.object_i_d, artifact
       						ImportTransactionLog.create(:object_i_d => obj.object_i_d, :transaction_type => 'import')
-      						IssueTransactionLog.create(:object_i_d => obg.object_i_d, :severity => 'warning', :issue_type => 'shell')
-  					    rescue
-      						IssueTransactionLog.create(:object_i_d => obg.object_i_d, :severity => 'error', :issue_type => 'creation')
+      						IssueTransactionLog.create(:object_i_d => obj.object_i_d, :severity => 'warning', :issue_type => 'shell')
+  					    rescue Exception => e3
+  					      Logger.debug e3
+      						IssueTransactionLog.create(:object_i_d => obj.object_i_d, :severity => 'error', :issue_type => 'creation')
 					      end
   					  end
 					  end

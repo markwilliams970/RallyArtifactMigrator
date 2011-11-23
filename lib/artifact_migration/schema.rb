@@ -82,6 +82,7 @@ module ArtifactMigration
 				
 				ArtifactMigration::RallyArtifacts.constants.each do |c|
 					next if c == :Attachment
+					next if c == :Project
 					
 					Logger.debug "Creating schema for #{c}"
 					klass = ArtifactMigration::RallyArtifacts.const_get(c)
@@ -98,6 +99,50 @@ module ArtifactMigration
 					#Logger.debug "#{c.to_s}'s primary key is: #{klass.primary_key}"
 					
 				end
+			end
+		end
+	
+		def self.create_project_scheme
+			ActiveRecord::Schema.define do
+				ActiveRecord::Migration.verbose = false
+				
+				unless ArtifactMigration::Project.table_exists?
+  				create_table :projects, :id => false, :force => false do |t|
+  					t.column :source_object_i_d, :integer
+  					t.column :target_object_i_d, :integer
+  					t.column :source_parent_i_d, :integer
+  					t.column :name, :string
+  					t.column :description, :text
+  					t.column :owner, :string
+  					t.column :state, :string
+  				end
+				
+  				add_index :projects, :source_object_i_d, :unique => true
+  				add_index :projects, :target_object_i_d, :unique => true
+  				add_index :projects, :source_parent_i_d
+  			end
+  			
+  			unless ArtifactMigration::ProjectPermission.table_exists?
+  				create_table :project_permissions, :id => false, :force => false do |t|
+  					t.column :project_i_d, :integer
+  					t.column :user, :string
+  					t.column :role, :string
+  				end
+				
+  				add_index :project_permissions, :project_i_d
+  				add_index :project_permissions, :user
+			  end
+
+  			unless ArtifactMigration::WorkspacePermission.table_exists?
+  				create_table :workspace_permissions, :id => false, :true => false do |t|
+  					t.column :workspace_i_d, :integer
+  					t.column :user, :string
+  					t.column :role, :string
+  				end
+				
+  				add_index :workspace_permissions, :workspace_i_d
+  				add_index :workspace_permissions, :user
+			  end
 			end
 		end
 		
