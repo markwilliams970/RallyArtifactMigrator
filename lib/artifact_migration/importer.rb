@@ -578,7 +578,7 @@ module ArtifactMigration
 			end
 			emit :end_update_defect_duplicates
 		end
-		
+				
 		def self.import_attachments
 			Logger.info "Importing Attachments"
 			
@@ -634,6 +634,119 @@ module ArtifactMigration
 			
 			prefs.update(:default_workspace => old_ws, :default_project => old_p)
 		end
+
+    def self.import_attachments_new(description, opts = {})
+			Logger.info "Importing Attachments with Stateless Editor"
+			
+			Logger.debug "Switching Workspaces to OID #{@@workspace}"
+			prefs = @@rally_ds.user.user_profile
+			
+			old_ws = prefs.default_workspace
+			old_p = prefs.default_project
+		
+			Logger.debug "Old Default Workspace #{old_ws}/#{old_p}"
+			prefs.update(:default_workspace => @@workspace)
+			Logger.debug "New Default Workspace #{prefs.default_workspace}/#{prefs.default_project}"
+    	
+    	config = Configuration.singleton.target_config
+			
+    	workspace_oid = config.workspace_oid
+    	token = get_rally_security_token
+
+    	adhoc = RestClient::Resource.new("#{config.server}", :verify_ssl => false, :headers => { 'Cookie' => token } )
+    	res = adhoc['switchWorkspace.sp'].post("wOid=#{workspace_oid}")
+
+      def get_prefix(source_oid)
+        target_type = ArtifactMigration::ObjectTypeMap.find_by_object_i_d source_oid
+        case target_type
+          when 'defect' then 'df'
+          when 'hierarchical_requirement' then 'ar'
+          when 'task' then 'tk'
+          when 'test_case' then 'tc'
+        end
+      end
+
+			emit :begin_attachment_import, ArtifactMigration::Attachment.count
+			ArtifactMigration::Attachment.all.each do |attachment|
+				source_aid = attachment.artifact_i_d
+				target_aid = @@object_manager.get_mapped_artifact source_aid
+				target_oid = target_aid.object_i_d
+				att_id = attachment.object_i_d
+				project_oid = target_aid.project.object_i_d
+				
+				next if ImportTransactionLog.readonly.where("object_i_d = ? AND transaction_type = ?", att_id, 'import').exists?
+				
+				file_name = File.join('Attachments', "#{source_aid}", "#{att_id}")
+				Logger.debug "Begin upload for #{file_name} || #{target_aid.object_i_d}"
+				
+				#client["#{attachment_new_url}?oid=#{target_aid.object_i_d}"].get
+				#res = client[attachment_create_url].post(:fileName => attachment.name, :file => File.new(File.join('Attachments', "#{source_aid}", "#{att_id}"), 'rb'), :oid => target_aid.object_i_d, :enclosure => attachment.description)
+    	  urlp = "cpoid=#{project_oid}&projectScopeUp=false&projectScopeDown=true"
+    	  postp = {}
+    	  version = 0
+    		res = adhoc["#{get_prefix(source_aid)}/edit.sp?#{urlp}&oid=#{target_oid}"].get
+    		doc = Nokogiri::HTML(res)
+      	doc.xpath('//input').each do |input|
+      	  #puts "#{input['name']} = #{input['value']}"
+    	    postp[input['name'].to_s.to_sym] = input['value'] if input['type'] == 'hidden'
+    	    postp[input['name'].to_s.to_sym] = input['value'] if input['name'].include? 'enclosure'
+    	    postp[input['name'].to_s.to_sym] = input['value'] if input['name'].include? 'steps'
+      	end
+
+    		#puts res.inspect
+    		#puts res.body
+    		postp[:fileName] = file_name
+    		postp[:file] = File.new file_name
+    		postp[:oid] = target_oid
+        postp[:creationContext] = "#{urlp}&oid=#{target_oid}"
+
+    		res = adhoc[base_url].post(postp)
+
+    		puts res.body
+    		doc = Nokogiri::HTML(res)
+      	doc.xpath('//input').each do |input|
+      	  puts "#{input['name']} = #{input['value']}"
+    	    postp[input['name'].to_s.to_sym] = input['value']
+    	    postp[input['name'].to_s.to_sym] = description if input['name'].include? 'enclosure'
+      	end
+
+        postp[:editorMode] = 'edit'
+        postp[:editorType] = target_type
+
+    		#'-------------------Save Artifact---------------------'
+    		postp.delete :file
+    		postp.each {|k, v| puts "#{k} = #{v}"}
+
+    		res = adhoc["#{prefix}/edit/update.sp?#{urlp}"].post(postp)
+    		doc = Nokogiri::HTML(res)
+    		doc.xpath('//input[@name = "version"]').each do |v|
+    		  if (v['value'] == postp[:version])
+    		    #puts "Version didn't change"
+    		    success = false
+    		  else
+    		    #puts "Version changed"
+    		    success = true
+    	    end
+
+    	    #puts "Version #{postp[:version]} => #{v['value']}"
+    	  end
+
+    		#File.open("save_out.html", 'w') {|f| f.write(res.body) }
+				
+				if success
+					Logger.info "Uploaded Attachment #{attachment.name} for Artifact #{target_aid}"
+					ImportTransactionLog.create(:object_i_d => att_id, :transaction_type => 'import')
+				else
+					Logger.info "FAILED to upload Attachment #{attachment.name} for Artifact #{target_aid}"
+				end
+				
+				emit :loop
+			end
+			emit :end_attachment_import
+			
+			prefs.update(:default_workspace => old_ws, :default_project => old_p)
+    end
+
 
 		def self.fix_test_sets
 			ArtifactMigration::RallyArtifacts::TestSet.all.each do |test_set|
