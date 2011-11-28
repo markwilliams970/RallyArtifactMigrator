@@ -139,6 +139,8 @@ module ArtifactMigration
 		def self.import_projects
 			config = Configuration.singleton.target_config
 			
+			emit :begin_import_projects, ArtifactMigration::Project.count
+			
 			ArtifactMigration::Project.all.each do |project|
 			  new_oid = config.project_mapping[project.source_object_i_d]
 			  next if new_oid
@@ -155,15 +157,23 @@ module ArtifactMigration
 			    # This line is throwing an exception.  Don't know why.  Creating workaround
 			    #project.update_attribute :target_object_i_d, newp.object_i_d
 			    ####  Workaround
+			    project.target_object_i_d = newp.object_i_d
 			    st = ActiveRecord::Base.connection.raw_connection.prepare("UPDATE projects SET target_object_i_d=? WHERE source_object_i_d=?")
           st.execute(newp.object_i_d.to_s.to_i, project.source_object_i_d)
           st.close
 			    #### End Workaround
 			    
 			    config.map_project_oid :from => project.source_object_i_d, :to => newp.object_i_d.to_s.to_i
+			    emit :imported_project, project.source_object_i_d
+		    else
+		      emit :imported_project_skipped, project.source_object_i_d
 		    end
+		    
+		    emit :loop
 		  end
+		  emit :end_import_projects
 		  
+		  emit :begin_update_project_parents, ArtifactMigration::Project.count
 		  ArtifactMigration::Project.all.each do |project|
 		    if project.source_parent_i_d
 		      parent = map_project project.source_parent_i_d
@@ -172,6 +182,7 @@ module ArtifactMigration
 		      Logger.debug "Updated Parent Project for #{project.name}"
 	      end
 			end
+			emit :end_update_project_parents
 
 			ret = Helper.batch_toolkit :url => config.server,
 				:username => config.username,
@@ -199,6 +210,7 @@ module ArtifactMigration
 			mapping = ret["Results"].collect { |pp| "#{pp['Project']['ObjectID']}_#{pp['User']['UserName']}" }
 			Logger.debug "PPMapping - #{mapping.size} - #{mapping}"
 			
+			emit :begin_import_project_permissions, ArtifactMigration::ProjectPermission.count
 			ArtifactMigration::ProjectPermission.all.each do |pp|
 			  newp = map_project pp.project_i_d
 			  user = map_user pp.user
@@ -214,9 +226,18 @@ module ArtifactMigration
 			    Logger.debug "User #{pp.user} is already in WOID #{config.workspace_oid}"
 		    end
 			  
-			  perm = @@rally_ds.create(:project_permission, :project => newp, :user => user, :role => pp.role)
-			  Logger.debug perm
+			  unless mapping.include? "#{newp.object_i_d}_#{user.user_name}"
+  			  perm = @@rally_ds.create(:project_permission, :project => newp, :user => user, :role => pp.role)
+  			  Logger.debug perm
+  			  emit :imported_project_permission, pp.project_i_d, pp.user
+  			else
+  			  emit :imported_project_permission_skipped, pp.project_i_d, pp.user
+			  end
+			  
+			  emit :loop
 		  end
+		  emit :end_import_project_permissions
+			
 	  end
 		
 		def self.import_type(type)

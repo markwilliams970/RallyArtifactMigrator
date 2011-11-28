@@ -13,6 +13,12 @@ module ArtifactMigration
 
   class WorkspacePermission < ActiveRecord::Base
   end
+  
+  class Owners < ActiveRecord::Base
+  end
+  
+  class AttributeValues < ActiveRecord::Base
+  end
 
 	module RallyArtifacts		
 		def self.create_artifact_classes

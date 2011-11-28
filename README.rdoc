@@ -26,14 +26,13 @@ Rally Artifact Migration utility.
 
 * Custom fields that contain special characters are not migrated.
 * Custom fields that have multiple capital letters in a row are not migrated.
+* When importing projects, projects are created in the user's default workspace instead of the specified workspace (WSAPI issue?)
 
 === 0.4.0
-* [FEATURE] Migrate Projects
-* [FEATURE] Migrate User Permissions (not users; that is comming)
-* [FEATURE] Continue import on error if possible (new table that will list which artifacts were partially imported)
-
-=== 0.3.5
 * [FEATURE] Added RPM support
+* [FEATURE] Migrate Projects
+* [FEATURE] Migrate User Permissions (not users)
+* [FEATURE] Continue import on error if possible (new table that will list which artifacts were partially imported)
 * [FEATURE] Renamed ArtifactMigration::TYPICAL_TYPES to ArtifactMigration::EE_TYPES
 * [FEATURE] Renamed ArtifactMigration::VALID_TYPES to ArtifactMigration::UE_TYPES
 * [FEATURE] Added :portfolio_item to ArtifactMigration::UE_TYPES

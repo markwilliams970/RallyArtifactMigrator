@@ -146,6 +146,20 @@ module ArtifactMigration
 			end
 		end
 		
+		def self.create_attribute_value_schema
+			ActiveRecord::Schema.define do
+				ActiveRecord::Migration.verbose = false
+				
+				create_table :attribte_values, :id => false, :force => true do |t|
+				  t.column :attribute_i_d, :integer
+				  t.column :name, :string
+				  t.column :artifact_type, :string
+				  t.column :attribute_type, :string
+				  t.column :values, :text
+			  end
+			end
+	  end
+		
 		def self.create_attachment_scheme
 			ActiveRecord::Schema.define do
 				ActiveRecord::Migration.verbose = false

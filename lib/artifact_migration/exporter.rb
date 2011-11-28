@@ -63,6 +63,7 @@ module ArtifactMigration
 			Schema.create_object_type_map_schema
       Schema.create_project_scheme
 			Schema.create_attachment_scheme
+			Schema.create_attribute_value_schema
 			
 			attrs = {}
 			@@rw_attrs = {}
