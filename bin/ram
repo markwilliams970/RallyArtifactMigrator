@@ -5,7 +5,7 @@ require 'trollop'
 ARGV << "--help" if ARGV.size == 0
 
 opts = Trollop::options do
-	version "Rally Artifact Migrator 0.3.1"
+	version "Rally Artifact Migrator v" + File.read(File.join(File.dirname(__FILE__), '..', 'VERSION'))
 	banner <<-EOS
 Rally Artifact Migrator is a utility for migrating Rally artifacts from one project to another
 
