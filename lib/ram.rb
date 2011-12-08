@@ -12,7 +12,7 @@ module ArtifactMigration
 	UE_TYPES = [:test_set, :test_folder, :portfolio_item].to_set + ArtifactMigration::EE_TYPES
 	ARTIFACT_TYPES = [:portfolio_item, :hierarchical_requirement, :defect, :defect_suite, :test_case, :task]
 
-	RALLY_API_VERSION = "1.27"
+	RALLY_API_VERSION = "1.28"
 	
 	VERSION = File.read(File.join(File.dirname(__FILE__), '..', 'VERSION'))
 	

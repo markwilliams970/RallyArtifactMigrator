@@ -272,7 +272,7 @@ module ArtifactMigration
 					attrs[:submitted_by] = map_user obj.submitted_by 															if klass.column_names.include? 'submitted_by' #&& obj.submitted_by
 
           if type == :portfolio_item
-					  attrs[:type] = find_portfolio_item_attribute(:type, attrs[:type])            if klass.column_names.include? 'preliminary_estimate'
+					  attrs[:portfolio_item_type] = find_portfolio_item_attribute(:portfolio_item_type, attrs[:portfolio_item_type])            if klass.column_names.include? 'preliminary_estimate'
 					  attrs[:preliminary_estimate] = find_portfolio_item_attribute(:preliminary_estimate, attrs[:preliminary_estimate]) if klass.column_names.include? 'preliminary_estimate'
 					end
 					

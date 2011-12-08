@@ -133,11 +133,11 @@ module ArtifactMigration
 					o.each do |k, v| 
 						if %w(Project PortfolioItem Requirement WorkProduct TestCase Defect DefectSuite TestFolder Parent TestCaseResult Iteration Release TestSet).include? k
 							attrs[k.to_s.underscore.to_sym] = v["ObjectID"] if v
-						elsif %w(PreliminaryEstimate Type).include? k # TODO: Make generic
+						elsif %w(PreliminaryEstimate PortfolioItemType).include? k # TODO: Make generic
 						  if (type == :portfolio_item)
-						    #Logger.debug "Transforming #{k} - #{v['Name']}" unless v.nil?
+						    Logger.debug "Transforming #{k} - #{v['Name']}" unless v.nil?
 						    attrs[k.to_s.underscore.to_sym] = v['Name'] unless v.nil?
-						    #Logger.debug "#{k.to_s.underscore.to_sym} => #{attrs[k.to_s.underscore.to_sym]}"
+						    Logger.debug "#{k.to_s.underscore.to_sym} => #{attrs[k.to_s.underscore.to_sym]}"
 						  end
 						elsif %w(Owner SubmittedBy).include? k
 							attrs[k.to_s.underscore.to_sym] = v["UserName"] if v

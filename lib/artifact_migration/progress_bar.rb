@@ -129,8 +129,8 @@ class ProgressBar
   end
 
   def bar_width
-    return terminal_width - non_bar_width if terminal_width - non_bar_width > 0
-    0
+    return terminal_width - non_bar_width if terminal_width - non_bar_width > 2
+    2
   end
 
   def non_bar_width
