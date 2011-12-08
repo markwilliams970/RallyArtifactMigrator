@@ -140,6 +140,7 @@ module ArtifactMigration
 			config = Configuration.singleton.target_config
 			
 			emit :begin_import_projects, ArtifactMigration::Project.count
+			#old_ws, old_p = switch_user_default_workspace_and_project @@rally_ds.user, @@workspace, @@workspace.projects.first
 			
 			ArtifactMigration::Project.all.each do |project|
 			  new_oid = config.project_mapping[project.source_object_i_d]
@@ -151,7 +152,7 @@ module ArtifactMigration
 		    end
 			  
 			  owner = map_user(project.owner)
-			  newp = @@rally_ds.create(:project, :name => project.name, :description => project.description, :state => project.state, :owner => owner, :workspae => @@workspace)
+			  newp = @@rally_ds.create(:project, :name => project.name, :description => project.description, :state => project.state, :owner => owner, :workspace => @@workspace)
 			  #Logger.debug newp
 			  if newp
 			    # This line is throwing an exception.  Don't know why.  Creating workaround
@@ -236,6 +237,8 @@ module ArtifactMigration
 			  
 			  emit :loop
 		  end
+		  
+		  #switch_user_default_workspace_and_project @@rally_ds.user, old_ws, old_p
 		  emit :end_import_project_permissions
 			
 	  end
@@ -272,7 +275,7 @@ module ArtifactMigration
 					attrs[:submitted_by] = map_user obj.submitted_by 															if klass.column_names.include? 'submitted_by' #&& obj.submitted_by
 
           if type == :portfolio_item
-					  attrs[:portfolio_item_type] = find_portfolio_item_attribute(:portfolio_item_type, attrs[:portfolio_item_type])            if klass.column_names.include? 'preliminary_estimate'
+					  attrs[:portfolio_item_type] = find_portfolio_item_attribute(:type, attrs[:portfolio_item_type])                   if klass.column_names.include? 'preliminary_estimate'
 					  attrs[:preliminary_estimate] = find_portfolio_item_attribute(:preliminary_estimate, attrs[:preliminary_estimate]) if klass.column_names.include? 'preliminary_estimate'
 					end
 					
@@ -355,7 +358,16 @@ module ArtifactMigration
     					  begin
     					    Logger.debug e2
       						Logger.debug "[SHELL] Creating #{attrs[:name]} for project '#{attrs[:project]}' in workspace '#{attrs[:workspace]}'"
-      						artifact = @@rally_ds.create(type, :name => attrs[:name], :workspace => attrs[:workspace], :project => attrs[:project])
+      						
+      						attrs_shell = {
+      						  :name => attrs[:name], 
+      						  :workspace => attrs[:workspace], 
+      						  :project => attrs[:project]
+      						}
+      						attrs_shell[:portfolio_item_type] = attrs[:portfolio_item_type] if attrs.has_key? :portfolio_item_type
+      						attrs_shell[:work_product] = attrs[:work_product] if attrs.has_key? :work_product
+      						
+      						artifact = @@rally_ds.create(type, attrs_shell)
       						Logger.info "[SHELL] Created #{type.to_s.humanize}: #{artifact.name}"
 
       						@@object_manager.map_artifact obj.object_i_d, artifact.object_i_d, artifact
@@ -544,7 +556,7 @@ module ArtifactMigration
 		
 		def self.update_defect_duplicates
 			return unless ArtifactMigration::RallyArtifacts::Defect.column_names.include? 'duplicates'
-			Logger.info "Updating Defect Dupicates"
+			Logger.info "Updating Defect Duplicates"
 			
 			emit :begin_update_defect_duplicates, ArtifactMigration::RallyArtifacts::Defect.count
 			ArtifactMigration::RallyArtifacts::Defect.all.each do |defect|
@@ -634,19 +646,37 @@ module ArtifactMigration
 			
 			prefs.update(:default_workspace => old_ws, :default_project => old_p)
 		end
-
-    def self.import_attachments_new(description, opts = {})
-			Logger.info "Importing Attachments with Stateless Editor"
-			
-			Logger.debug "Switching Workspaces to OID #{@@workspace}"
-			prefs = @@rally_ds.user.user_profile
+		
+		def self.switch_user_default_workspace(user, workspace)
+			prefs = user.user_profile
 			
 			old_ws = prefs.default_workspace
 			old_p = prefs.default_project
 		
 			Logger.debug "Old Default Workspace #{old_ws}/#{old_p}"
-			prefs.update(:default_workspace => @@workspace)
+			prefs.update(:default_workspace => workspace)
 			Logger.debug "New Default Workspace #{prefs.default_workspace}/#{prefs.default_project}"
+			
+			return [old_ws, old_p]
+	  end
+
+		def self.switch_user_default_workspace_and_project(user, workspace, project)
+			prefs = user.user_profile
+			
+			old_ws = prefs.default_workspace
+			old_p = prefs.default_project
+		
+			Logger.debug "Old Default Workspace #{old_ws}/#{old_p}"
+			prefs.update(:default_workspace => workspace, :defalut_project => project)
+			Logger.debug "New Default Workspace #{prefs.default_workspace}/#{prefs.default_project}"
+			
+			return [old_ws, old_p]
+	  end
+
+    def self.import_attachments_new(description, opts = {})
+			Logger.info "Importing Attachments with Stateless Editor"
+			old_ws, old_p = switch_user_default_workspace @@rally_ds.user, @@workspace
+			Logger.debug "Switching Workspaces to OID #{@@workspace}"
     	
     	config = Configuration.singleton.target_config
 			

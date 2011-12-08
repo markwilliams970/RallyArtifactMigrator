@@ -93,6 +93,8 @@ module ArtifactMigration
   			end
 			end
 			
+			@@rw_attrs['Task'] = @@rw_attrs['Task'] + %w(Project).to_set
+			
 			%w(HierarchicalRequirement Defect DefectSuite Task TestCase TestSet).each do |wp|
 				@@rw_attrs[wp] = @@rw_attrs[wp] - %w(Successors).to_set
 			end
