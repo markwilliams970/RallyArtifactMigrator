@@ -87,19 +87,21 @@ module ArtifactMigration
 				end
 			end
 			
-			if c.version.to_f < 1.27
+			#if c.version.to_f < 1.27
   			%w(HierarchicalRequirement Defect DefectSuite Task TestCase TestSet).each do |wp|
   				@@rw_attrs[wp] = @@rw_attrs[wp] + %w(Name Notes Owner Tags Package Description FormattedID Project).to_set
   			end
-			end
+			#end
 			
-			@@rw_attrs['Task'] = @@rw_attrs['Task'] + %w(Project).to_set
+			#@@rw_attrs['Task'] = @@rw_attrs['Task'] + %w(Project).to_set
 			
 			%w(HierarchicalRequirement Defect DefectSuite Task TestCase TestSet).each do |wp|
 				@@rw_attrs[wp] = @@rw_attrs[wp] - %w(Successors).to_set
 			end
 			
-			Logger.debug("Columns for TestSet are #{@@rw_attrs['TestSet']}")
+			#Logger.debug("Columns for TestSet are #{@@rw_attrs['TestSet']}")
+			
+			@@rw_attrs.each { |k, v| Logger.debug "Type #{k} has columns #{k}" }
 			@@rw_attrs.each { |k, v| Schema.update_schema_for_artifact(k.underscore.to_sym, v)}
 			
 			emit :export_preperation_complete
@@ -258,7 +260,7 @@ module ArtifactMigration
 					if (art['Attachments'] and (art['Attachments'].size > 0))
 						Logger.info "#{art['Name']} [#{art['ObjectID']}] has #{art['Attachments'].size} Attachments"
 					
-						artifact_res = @@rally_ds.find(:artifact, :project => project, :project_scope_up => false, :project_scope_down => false) { equal :object_i_d, art['ObjectID'] }
+						artifact_res = @@rally_ds.find(:artifact, :fetch => true, :project => project, :project_scope_up => false, :project_scope_down => false) { equal :object_i_d, art['ObjectID'] }
 						artifact = artifact_res.results.first
 
 						if artifact.attachments
@@ -278,7 +280,8 @@ module ArtifactMigration
 											:name => attachment.name,
 											:description => attachment.description, 
 											:user_name => attachment.user.user_name,
-											:artifact_i_d => artifact.object_i_d
+											:artifact_i_d => artifact.object_i_d,
+											:content_type => attachment.content_type
 										}
 										
 										Attachment.create(attrs) unless Attachment.find_by_object_i_d(attachment.object_i_d)

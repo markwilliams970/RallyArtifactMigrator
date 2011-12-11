@@ -41,7 +41,14 @@ module ArtifactMigration
 			end
 			
 			update_artifact_statuses
-			import_attachments if config.migrate_attachments_flag
+			
+			if config.migrate_attachments_flag
+        if config.version.to_f < 1.29
+  			  import_attachments 
+			  else
+			    import_attachments_ws
+		    end
+		  end
 			
 			emit :end_import
 		end
@@ -72,7 +79,7 @@ module ArtifactMigration
 		  @@pi_attr_cache[type] = {} unless @@pi_attr_cache.has_key? type
 		  return @@pi_attr_cache[type][name] if @@pi_attr_cache[type].has_key? name
 		  
-		  res = @@rally_ds.find(type) { equal :name, name }
+		  res = @@rally_ds.find(type, :workspace => @@workspace, :fetch => true) { equal :name, name }
 		  Logger.debug "Found #{res.size} results for #{type}::#{name}"
 		  @@pi_attr_cache[type][name] = res.first
 		  
@@ -807,6 +814,41 @@ module ArtifactMigration
 				end
 			end
 		end
+		
+		def self.import_attachments_ws
+			Logger.info "Importing Attachments"
+			
+			config = Configuration.singleton.target_config
+
+			emit :begin_attachment_import, ArtifactMigration::Attachment.count
+			ArtifactMigration::Attachment.all.each do |attachment|
+				source_aid = attachment.artifact_i_d
+				target_aid = @@object_manager.get_mapped_artifact source_aid
+				att_id = attachment.object_i_d
+				
+				next if ImportTransactionLog.readonly.where("object_i_d = ? AND transaction_type = ?", att_id, 'import').exists?
+				
+				file_name = File.join('Attachments', "#{source_aid}", "#{att_id}")
+				Logger.debug "Begin upload for #{file_name} || #{target_aid.object_i_d}"
+				
+  		  byte_content = File.read(file_name)
+        content_string = Base64.encode64(byte_content)
+        
+        content = @@rally_ds.create(:attachment_content, :content => content_string)
+        @@rally_ds.create( :attachment, 
+                      :name => attachment.name,
+                      :description => attachment.description
+                      :content => content,
+                      :artifact => target_aid,
+                      :content_type => attachment.content_type,
+                      :size => byte_content.length)
+				
+				emit :loop
+			end
+			emit :end_attachment_import
+			
+			prefs.update(:default_workspace => old_ws, :default_project => old_p)
+	  end
 		
 		private
 		def self.get_rally_security_token

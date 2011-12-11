@@ -170,6 +170,7 @@ module ArtifactMigration
 					t.column :name, :string
 					t.column :description, :text
 					t.column :user_name, :string
+					t.column :content_type, :string
 				end
 				
 				add_index :attachments, :object_i_d, :unique => true
