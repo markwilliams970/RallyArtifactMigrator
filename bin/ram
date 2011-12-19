@@ -31,7 +31,7 @@ unless opts[:help]
 			instance_eval File.read(config_file)
 			
 			if opts[:reset]
-			  puts "Reseting transaction log"
+			  print "Reseting transaction log... "
 			  ArtifactMigration::Exporter.reset_transaction_log
 			  puts "Transaction log reset"
 		  end

@@ -16,7 +16,7 @@ module ArtifactMigration
 		extend Events::Emitter
 		
 		def self.run
-		  ensure_database_connection
+		  DatabaseConnection.ensure_database_connection
 		  
 			prepare
 			
@@ -152,35 +152,37 @@ module ArtifactMigration
 			#old_ws, old_p = switch_user_default_workspace_and_project @@rally_ds.user, @@workspace, @@workspace.projects.first
 			
 			ArtifactMigration::Project.all.each do |project|
-			  new_oid = config.project_mapping[project.source_object_i_d]
-			  next if new_oid
+			  unless ImportTransactionLog.readonly.where("object_i_d = ? AND transaction_type = ?", project.source_object_i_d, 'import').exists?
+  			  new_oid = config.project_mapping[project.source_object_i_d]
+  			  next if new_oid
 
-			  if project.target_object_i_d
-			    config.map_project_oid :from => project.source_object_i_d, :to => project.target_object_i_d
-			    next
-		    end
+#  			  if project.target_object_i_d
+#  			    config.map_project_oid :from => project.source_object_i_d, :to => project.target_object_i_d
+#  			    next
+#  		    end
 			  
-			  owner = map_user(project.owner)
-			  newp = @@rally_ds.create(:project, :name => project.name, :description => project.description, :state => project.state, :owner => owner, :workspace => @@workspace)
-			  #Logger.debug newp
-			  if newp
-			    # This line is throwing an exception.  Don't know why.  Creating workaround
-			    #project.update_attribute :target_object_i_d, newp.object_i_d
-			    ####  Workaround
-			    project.target_object_i_d = newp.object_i_d
-			    st = ActiveRecord::Base.connection.raw_connection.prepare("UPDATE projects SET target_object_i_d=? WHERE source_object_i_d=?")
-          st.execute(newp.object_i_d.to_s.to_i, project.source_object_i_d)
-          st.close
-			    #### End Workaround
-			    
-			    config.map_project_oid :from => project.source_object_i_d, :to => newp.object_i_d.to_s.to_i
-			    emit :imported_project, project.source_object_i_d
-		    else
-		      emit :imported_project_skipped, project.source_object_i_d
-		    end
+  			  owner = map_user(project.owner)
+  			  newp = @@rally_ds.create(:project, :name => project.name, :description => project.description, :state => project.state, :owner => owner, :workspace => @@workspace)
+  			  #Logger.debug newp
+  			  if newp
+  			    project.target_object_i_d = newp.object_i_d
+  			    st = ActiveRecord::Base.connection.raw_connection.prepare("UPDATE projects SET target_object_i_d=? WHERE source_object_i_d=?")
+            st.execute(newp.object_i_d.to_s.to_i, project.source_object_i_d)
+            st.close
+
+  			    ImportTransactionLog.create(:object_i_d => project.source_object_i_d, :transaction_type => 'import')
+  			    			    
+  			    config.map_project_oid :from => project.source_object_i_d, :to => newp.object_i_d.to_s.to_i
+  			    emit :imported_project, project.source_object_i_d
+  		    else
+  		      emit :imported_project_skipped, project.source_object_i_d
+  		    end
 		    
-		    emit :loop
-		  end
+  		    emit :loop
+  		  else
+          config.map_project_oid :from => project.source_object_i_d, :to => project.target_object_i_d
+  		  end
+	    end
 		  emit :end_import_projects
 		  
 		  emit :begin_update_project_parents, ArtifactMigration::Project.count
@@ -191,6 +193,8 @@ module ArtifactMigration
 		      child.update :parent => parent
 		      Logger.debug "Updated Parent Project for #{project.name}"
 	      end
+	      
+	      emit :loop
 			end
 			emit :end_update_project_parents
 

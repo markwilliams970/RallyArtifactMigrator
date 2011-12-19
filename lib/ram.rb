@@ -45,7 +45,8 @@ module ArtifactMigration
 			autoload :RallyArtifacts
 		end
 			
+		autoload :DatabaseConnection
 	end
 end
 
-require 'artifact_migration/bootstrap'
+#require 'artifact_migration/bootstrap'

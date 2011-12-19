@@ -23,7 +23,7 @@ module ArtifactMigration
 		extend Events::Emitter
 		
 		def self.reset_transaction_log
-	    ensure_database_connection
+	    DatabaseConnection.ensure_database_connection
 	    
 			ActiveRecord::Schema.define do
 				ActiveRecord::Migration.verbose = false
@@ -42,7 +42,7 @@ module ArtifactMigration
 	  end
 		
 		def self.run
-		  ensure_database_connection
+		  DatabaseConnection.ensure_database_connection
 		  
 			prepare
 			
