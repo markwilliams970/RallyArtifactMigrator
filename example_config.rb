@@ -4,6 +4,8 @@
 #                                             #
 ###############################################
 
+connect_to_database './db/artifacts.sqlite3'
+
 ArtifactMigration::Configuration.define do |config|
 	config.source do |source|
 		source.server = 'https://demo.rallydev.com/slm'

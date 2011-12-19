@@ -17,6 +17,7 @@ EOS
 	opt :skip_verification, "Skips verification of the configuration file", :default => false
 	opt :export, "Exports the source environment", :default => false
 	opt :import, "Imports the artifacts into the target environment", :default => false
+	opt :reset, "Resets the import transaction log", :default => false
 	opt :example_configuration, "Generate an example configuration file", :type => :string
 end
 
@@ -28,6 +29,12 @@ unless opts[:help]
 
 		begin
 			instance_eval File.read(config_file)
+			
+			if opts[:reset]
+			  puts "Reseting transaction log"
+			  ArtifactMigration::Exporter.reset_transaction_log
+			  puts "Transaction log reset"
+		  end
 
 			valid = true
 			valid &&= ArtifactMigration::CLI.run_verification unless opts[:skip_verification]

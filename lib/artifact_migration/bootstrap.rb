@@ -6,18 +6,37 @@ This file takes care of creating the database if it does not already exist and e
 
 require 'sqlite3'
 require 'active_record'
+require 'fileutils'
 
-db_dir = "db"
-db_name = "artifacts.sqlite3"
+def ensure_database_connection
+  begin
+    Logger.debug ActiveRecord::Base.connection_config
+  rescue ActiveRecord::ConnectionNotEstablished
+    connect_to_database
+    retry
+  end
+end
 
-Dir.mkdir db_dir unless File.exists? db_dir
+def connect_to_database(file = nil)
+  db_dir = "db"
+  db_name = "artifacts.sqlite3"
+  
+  if file.nil?
+    db = File.join(db_dir, db_name)
+  else
+    db = file
+  end
 
-(SQLite3::Database.new(File.join(db_dir, db_name))).close
+  #Dir.mkdir db_dir unless File.exists? db_dir
+  FileUtils.mkdir_p File.dirname db
 
-ActiveRecord::Base.logger = ::Logger.new('active_record.log')
-ActiveRecord::Base.establish_connection(
-	:adapter => "sqlite3",
-	:database  => File.join(db_dir, db_name)
-)
+  (SQLite3::Database.new(db)).close
 
-ArtifactMigration::RallyArtifacts.create_artifact_classes
+  ActiveRecord::Base.logger = ::Logger.new('active_record.log')
+  ActiveRecord::Base.establish_connection(
+  	:adapter => "sqlite3",
+  	:database  => db
+  )
+
+  ArtifactMigration::RallyArtifacts.create_artifact_classes
+end

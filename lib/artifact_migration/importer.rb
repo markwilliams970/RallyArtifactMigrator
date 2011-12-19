@@ -16,6 +16,8 @@ module ArtifactMigration
 		extend Events::Emitter
 		
 		def self.run
+		  ensure_database_connection
+		  
 			prepare
 			
 			config = Configuration.singleton.target_config
@@ -837,7 +839,7 @@ module ArtifactMigration
         content = @@rally_ds.create(:attachment_content, :content => content_string)
         @@rally_ds.create( :attachment, 
                       :name => attachment.name,
-                      :description => attachment.description
+                      :description => attachment.description,
                       :content => content,
                       :artifact => target_aid,
                       :content_type => attachment.content_type,
@@ -846,8 +848,6 @@ module ArtifactMigration
 				emit :loop
 			end
 			emit :end_attachment_import
-			
-			prefs.update(:default_workspace => old_ws, :default_project => old_p)
 	  end
 		
 		private

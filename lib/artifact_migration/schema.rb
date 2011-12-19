@@ -2,7 +2,7 @@ require 'active_record'
 require 'active_support/inflector'
 
 module ArtifactMigration
-	class Schema
+	class Schema	  
 		def self.create_transaction_log_schema
 			ActiveRecord::Schema.define do
 				ActiveRecord::Migration.verbose = false

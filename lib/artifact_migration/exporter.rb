@@ -22,7 +22,28 @@ module ArtifactMigration
 	class Exporter
 		extend Events::Emitter
 		
+		def self.reset_transaction_log
+	    ensure_database_connection
+	    
+			ActiveRecord::Schema.define do
+				ActiveRecord::Migration.verbose = false
+				if ImportTransactionLog.table_exists?
+				  drop_table ImportTransactionLog.table_name.to_sym
+			  end
+			  
+			  if IssueTransactionLog.table_exists?
+			    drop_table IssueTransactionLog.table_name.to_sym
+		    end
+			  
+			  if ObjectIdMap.table_exists?
+			    drop_table ObjectIdMap.table_name.to_sym
+			  end
+		  end
+	  end
+		
 		def self.run
+		  ensure_database_connection
+		  
 			prepare
 			
 			c = Configuration.singleton.source_config
