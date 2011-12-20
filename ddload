@@ -1,0 +1,21 @@
+#!/usr/bin/env ruby -W0
+
+require 'trollop'
+
+opts = Trollop::options do
+	version "Rally Demo Data Loader"
+	banner <<-EOS
+DDLoad loads data from a RAM database to a demo environment
+
+Usage:
+	Usage: ddload <config_file> [options]
+where [options] are:
+EOS
+	opt :reset, "Resets the import transaction log", :default => false
+	opt :username, "Target Environment Username", :default => ''
+	opt :password, "Target Environment Username", :default => ''
+	opt :database, "Location of database", :default => './db/artifacts.sqlite'
+end
+
+puts opts
+
