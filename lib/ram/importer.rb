@@ -269,7 +269,8 @@ module ArtifactMigration
 				
 				%w(object_i_d defects predecessors parent successors duplicates children test_cases tags project workspace release iteration work_product).each { |a| attrs.delete a.to_sym if attrs.has_key? a.to_sym }
 				
-				unless ImportTransactionLog.readonly.where("object_i_d = ? AND transaction_type = ?", obj.object_i_d, 'import').exists?
+				artifact_exists = ImportTransactionLog.readonly.where("object_i_d = ? AND transaction_type = ?", obj.object_i_d, 'import').exists?
+				unless artifact_exists and !c.update_existing
 					valid = true
 					
 					attrs[:workspace] = @@workspace
@@ -348,47 +349,59 @@ module ArtifactMigration
 					if valid
 					  
 					  begin
-  						Logger.debug "Creating #{attrs[:name]} for project '#{attrs[:project]}' in workspace '#{attrs[:workspace]}'"
-  						Logger.debug "#{attrs}"
-  						artifact = @@rally_ds.create(type, attrs)
-  						Logger.info "Created #{type.to_s.humanize}: #{artifact.name}"
-										
-  						@@object_manager.map_artifact obj.object_i_d, artifact.object_i_d, artifact
-  						ImportTransactionLog.create(:object_i_d => obj.object_i_d, :transaction_type => 'import')
-  					rescue Exception => e1
-  					  begin
-  					    Logger.debug e1
-    						Logger.debug "[WITHOUT DESCRIPTION] Creating #{attrs[:name]} for project '#{attrs[:project]}' in workspace '#{attrs[:workspace]}'"
-    						attrs.delete :description
+  						if artifact_exists
+    						Logger.debug "Updating #{attrs[:name]} for project '#{attrs[:project]}' in workspace '#{attrs[:workspace]}'"
+    						Logger.debug "#{attrs}"
+    						artifact = @@object_manager.get_mapped_artifact obj.object_i_d
+    						artifact.update(attrs)
+    						Logger.info "Updated #{type.to_s.humanize}: #{artifact.name}"
+						  else
+    						Logger.debug "Creating #{attrs[:name]} for project '#{attrs[:project]}' in workspace '#{attrs[:workspace]}'"
     						Logger.debug "#{attrs}"
     						artifact = @@rally_ds.create(type, attrs)
-    						Logger.info "[WITHOUT DESCRIPTION] Created #{type.to_s.humanize}: #{artifact.name}"
+    						Logger.info "Created #{type.to_s.humanize}: #{artifact.name}"
 
     						@@object_manager.map_artifact obj.object_i_d, artifact.object_i_d, artifact
     						ImportTransactionLog.create(:object_i_d => obj.object_i_d, :transaction_type => 'import')
-    						IssueTransactionLog.create(:object_i_d => obj.object_i_d, :severity => 'warning', :issue_type => 'description')
-    					rescue Exception => e2
-    					  begin
-    					    Logger.debug e2
-      						Logger.debug "[SHELL] Creating #{attrs[:name]} for project '#{attrs[:project]}' in workspace '#{attrs[:workspace]}'"
-      						
-      						attrs_shell = {
-      						  :name => attrs[:name], 
-      						  :workspace => attrs[:workspace], 
-      						  :project => attrs[:project]
-      						}
-      						attrs_shell[:portfolio_item_type] = attrs[:portfolio_item_type] if attrs.has_key? :portfolio_item_type
-      						attrs_shell[:work_product] = attrs[:work_product] if attrs.has_key? :work_product
-      						
-      						artifact = @@rally_ds.create(type, attrs_shell)
-      						Logger.info "[SHELL] Created #{type.to_s.humanize}: #{artifact.name}"
+					    end
+  					rescue Exception => e1
+  					  begin
+  					    unless artifact_exists
+    					    Logger.debug e1
+      						Logger.debug "[WITHOUT DESCRIPTION] Creating #{attrs[:name]} for project '#{attrs[:project]}' in workspace '#{attrs[:workspace]}'"
+      						attrs.delete :description
+      						Logger.debug "#{attrs}"
+      						artifact = @@rally_ds.create(type, attrs)
+      						Logger.info "[WITHOUT DESCRIPTION] Created #{type.to_s.humanize}: #{artifact.name}"
 
       						@@object_manager.map_artifact obj.object_i_d, artifact.object_i_d, artifact
       						ImportTransactionLog.create(:object_i_d => obj.object_i_d, :transaction_type => 'import')
-      						IssueTransactionLog.create(:object_i_d => obj.object_i_d, :severity => 'warning', :issue_type => 'shell')
+      						IssueTransactionLog.create(:object_i_d => obj.object_i_d, :severity => 'warning', :issue_type => 'description', :message => e1.message, :backtrace => e1.backtrace)
+      					end
+    					rescue Exception => e2
+    					  begin
+    					    unless artifact_exists
+      					    Logger.debug e2
+        						Logger.debug "[SHELL] Creating #{attrs[:name]} for project '#{attrs[:project]}' in workspace '#{attrs[:workspace]}'"
+      						
+        						attrs_shell = {
+        						  :name => attrs[:name], 
+        						  :workspace => attrs[:workspace], 
+        						  :project => attrs[:project]
+        						}
+        						attrs_shell[:portfolio_item_type] = attrs[:portfolio_item_type] if attrs.has_key? :portfolio_item_type
+        						attrs_shell[:work_product] = attrs[:work_product] if attrs.has_key? :work_product
+      						
+        						artifact = @@rally_ds.create(type, attrs_shell)
+        						Logger.info "[SHELL] Created #{type.to_s.humanize}: #{artifact.name}"
+
+        						@@object_manager.map_artifact obj.object_i_d, artifact.object_i_d, artifact
+        						ImportTransactionLog.create(:object_i_d => obj.object_i_d, :transaction_type => 'import')
+        						IssueTransactionLog.create(:object_i_d => obj.object_i_d, :severity => 'warning', :issue_type => 'shell', :message => e2.message, :backtrace => e2.backtrace)
+        					end
   					    rescue Exception => e3
   					      Logger.debug e3
-      						IssueTransactionLog.create(:object_i_d => obj.object_i_d, :severity => 'error', :issue_type => 'creation')
+      						IssueTransactionLog.create(:object_i_d => obj.object_i_d, :severity => 'error', :issue_type => 'creation', :message => e3.message, :backtrace => e3.backtrace)
 					      end
   					  end
 					  end
@@ -849,6 +862,8 @@ module ArtifactMigration
                       :content_type => attachment.content_type,
                       :size => byte_content.length)
 				
+				ImportTransactionLog.create(:object_i_d => att_id, :transaction_type => 'import')
+        
 				emit :loop
 			end
 			emit :end_attachment_import

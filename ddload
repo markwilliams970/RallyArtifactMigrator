@@ -1,6 +1,10 @@
 #!/usr/bin/env ruby -W0
 
 require 'trollop'
+require 'rally_api'
+require 'ram'
+require 'fileutils'
+require 'csv'
 
 opts = Trollop::options do
 	version "Rally Demo Data Loader"
@@ -11,11 +15,96 @@ Usage:
 	Usage: ddload <config_file> [options]
 where [options] are:
 EOS
-	opt :reset, "Resets the import transaction log", :default => false
+	opt :server, "Rally Server (rally1, demo, preview, show, ect)", :default => 'demo'
 	opt :username, "Target Environment Username", :default => ''
 	opt :password, "Target Environment Username", :default => ''
 	opt :database, "Location of database", :default => './db/artifacts.sqlite'
 end
 
-puts opts
+Trollop:die :username, "Username must be specified" if opts[:username].empty?
+Trollop:die :password, "Password must be specified" if opts[:password].empty?
+
+# https://github.com/arydjmal/to_csv/blob/master/lib/to_csv.rb
+class Array
+  def to_csv(options = {}, csv_options = {})
+    return '' if self.empty?
+
+    klass      = self.first.class
+    attributes = self.first.attributes.keys.sort.map(&:to_sym)
+
+    if options[:only]
+      columns = Array(options[:only]) & attributes
+    else
+      columns = attributes - Array(options[:except])
+    end
+
+    columns += Array(options[:methods])
+
+    return '' if columns.empty?
+
+    writer = RUBY_VERSION >= "1.9.0" ? CSV : FasterCSV
+
+    output = writer.generate(csv_options) do |csv|
+      csv << columns.map { |column| klass.human_attribute_name(column) } unless options[:headers] == false
+      self.each do |item|
+        csv << columns.collect { |column| item.send(column) }
+      end
+    end
+
+    output
+  end
+end
+
+headers = RallyAPI::CustomHttpHeader.new()
+headers.name = "Rally Demo Data Loader"
+headers.vendor = "Rally Software"
+headers.version = "1.0"
+
+config = {}
+config[:base_url] = "https://#{opt[:server]}.rallydev.com"
+config[:username] = "#{opts[:username]}"
+config[:password] = "#{opts[:password]}"
+config[:headers] = headers
+
+rally = RallyAPI::RallyRestJson.new(config)
+
+["DDL1", "DDL2"].each do |wsname|
+  FileUtils.mkdir_p wsname unless File.exists wsname and File.directory wsname
+  
+  ws = {:name => wsname}
+  new_ws = rally.create(:workspace, ws)
+  
+  config[:workspace] = wsname
+  rally = RallyAPI::RallyRestJson.new(config)
+  
+  ArtifactMigration::Configuration.define do |config|
+    config.connect_to_database opt[:database]
+
+  	config.target do |target|
+  		target.server = "https://#{opt[:server]}.rallydev.com/slm"
+  		target.username = "#{opts[:username]}"
+  		target.password = "#{opts[:password]}"
+  		target.workspace_oid = new_ws.ObjectID
+  		target.project_scope_up = true
+  		target.project_scope_down = true
+  		target.version = "1.29"
+
+  		target.migrate_ue_types # EE types do not include RQM Types (Test Folder, Test Set, ect.) or Portfolio Items
+  		target.migrate_attachments
+  		target.migrate_projects
+		end
+		
+		config.clear_loggers
+
+  	debug = Logger.new File.join wsname, "debug.log"
+  	debug.level = Logger::DEBUG
+  	config.add_logger debug
+	end
+	
+	ArtifactMigration::Exporter.reset_transaction_log
+	ArtifactMigration::CLI.run_export
+	
+	File.open(File.join(wsname, "mapping.csv")) {|f| f.write ArtifactMigration::ObjectIdMap.all.to_csv }
+end
+
 

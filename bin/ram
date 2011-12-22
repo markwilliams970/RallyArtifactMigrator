@@ -18,6 +18,7 @@ EOS
 	opt :export, "Exports the source environment", :default => false
 	opt :import, "Imports the artifacts into the target environment", :default => false
 	opt :reset, "Resets the import transaction log", :default => false
+	opt :update, "Updates existing artifacts from a previous import", :default => false
 	opt :example_configuration, "Generate an example configuration file", :type => :string
 end
 
@@ -41,6 +42,7 @@ unless opts[:help]
 	
 			if valid
 				begin
+				  ArtifactMigration::Configuration.singleton.target_config.update_existing = opts[:update]
 					ArtifactMigration::CLI.run_export if opts[:all] or opts[:export]
 
 					begin

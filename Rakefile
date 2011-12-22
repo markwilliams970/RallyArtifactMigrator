@@ -56,7 +56,7 @@ Rake::PackageTask.new('ram', version) do |p|
 	p.package_files.include "example_config.rb"
 	p.package_files.include "VERSION"
 end
-
+=begin
 require 'rcov/rcovtask'
 Rcov::RcovTask.new do |test|
   test.libs << 'test'
@@ -65,8 +65,10 @@ Rcov::RcovTask.new do |test|
 end
 
 task :default => :test
+=end
 
-require 'rake/rdoctask'
+=begin
+require 'rdoc/task'
 Rake::RDocTask.new do |rdoc|
   version = File.exist?('VERSION') ? File.read('VERSION') : ""
 
@@ -75,6 +77,7 @@ Rake::RDocTask.new do |rdoc|
   rdoc.rdoc_files.include('README*')
   rdoc.rdoc_files.include('lib/**/*.rb')
 end
+=end
 
 require 'fileutils'
 task :latest do

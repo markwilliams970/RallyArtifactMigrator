@@ -26,6 +26,8 @@ module ArtifactMigration
 						t.column :object_i_d, :integer
 						t.column :issue_type, :string
 						t.column :severity, :string
+						t.column :message, :text
+						t.column :backtrace, :text
 					end
 					
 					add_index :issue_transaction_logs, :object_i_d

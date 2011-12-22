@@ -4,6 +4,9 @@ require 'active_support'
 require 'active_support/inflector'
 require 'rally_rest_api'
 require 'active_record'
+require 'require_all'
+
+require_all "#{File.dirname(__FILE__)}/ram/**/*.rb"
 
 module ArtifactMigration
 	extend ActiveSupport::Autoload
@@ -20,7 +23,7 @@ module ArtifactMigration
 	INTEGRATION_HEADER.vendor = "Rally Software"
 	INTEGRATION_HEADER.name = "Rally Artifact Migrator"
 	INTEGRATION_HEADER.version = ArtifactMigration::VERSION
-
+=begin
 	eager_autoload do
 		autoload :ConfigurationDefinition
 		autoload :Configuration
@@ -47,6 +50,7 @@ module ArtifactMigration
 			
 		autoload :DatabaseConnection
 	end
+=end
 end
 
 #require 'artifact_migration/bootstrap'

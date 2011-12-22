@@ -46,6 +46,10 @@ module ArtifactMigration
 			@loggers << logger
 		end
 		
+		def clear_loggers
+		  @loggers = []
+	  end
+		
 		def connect_to_database(dbfile)
 		  DatabaseConnection.connect_to_database dbfile
 	  end

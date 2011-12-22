@@ -26,6 +26,8 @@ module ArtifactMigration
 		attr_accessor :default_username
 		attr_accessor :version
 		
+		attr_accessor :update_existing
+		
 		attr_accessor :default_project_oid
 		
 		attr_reader :migration_types
