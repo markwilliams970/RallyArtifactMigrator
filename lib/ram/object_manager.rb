@@ -28,17 +28,17 @@ module ArtifactMigration
 			cached_object = YAML.load(cache.cached_object) if cache
 			
 			if cached_object
-				Logger.debug "Cache hit!"
+				#Logger.debug "Cache hit!"
 				rro = RestObject.new
 				cached_object[0] = rally_datasource
 				rro.marshal_load cached_object
 				artifact = rro
 			else
-				Logger.debug "Cache miss..."
+				#Logger.debug "Cache miss..."
 				klass_type = ObjectTypeMap.find_by_object_i_d old_id
 				res = rally_datasource.find(klass_type.artifact_type.to_sym, :workspace => workspace) { equal :object_i_d, stmap.target_id.to_i }
 				artifact = res.first if res
-				ObjectCache.create(:object_i_d => artifact.object_i_d, :cached_object => artifact.marshal_dump.to_yaml)
+			  ObjectCache.create(:object_i_d => artifact.object_i_d, :cached_object => artifact.marshal_dump.to_yaml)
 			end
 			
 			artifact
@@ -46,8 +46,8 @@ module ArtifactMigration
 		
 		def map_artifact(old_oid, new_oid, artifact)
 			unless ObjectIdMap.find_by_source_id(old_oid)
-				ObjectIdMap.create(:source_id => old_oid.to_i, :target_id => new_oid.to_i)
-				ObjectCache.create(:object_i_d => new_oid, :cached_object => artifact.marshal_dump.to_yaml)
+			  ObjectIdMap.create(:source_id => old_oid.to_i, :target_id => new_oid.to_i)
+			  ObjectCache.create(:object_i_d => new_oid, :cached_object => artifact.marshal_dump.to_yaml)
 			end
 		end
 		

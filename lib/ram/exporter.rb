@@ -38,6 +38,10 @@ module ArtifactMigration
 			  if ObjectIdMap.table_exists?
 			    drop_table ObjectIdMap.table_name.to_sym
 			  end
+			  
+			  if ObjectCache.table_exists?
+			    drop_table ObjectCache.table_name.to_sym
+		    end
 		  end
 	  end
 		

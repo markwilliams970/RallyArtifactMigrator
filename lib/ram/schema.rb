@@ -7,9 +7,10 @@ module ArtifactMigration
 			ActiveRecord::Schema.define do
 				ActiveRecord::Migration.verbose = false
 				unless ImportTransactionLog.table_exists?
-					create_table :import_transaction_logs, :id => false do |t|
+					create_table :import_transaction_logs, :id => true do |t|
 						t.column :object_i_d, :integer
 						t.column :transaction_type, :string
+						t.column :imported_on, :datetime
 					end
 					
 					add_index :import_transaction_logs, :object_i_d

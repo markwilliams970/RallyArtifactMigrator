@@ -32,6 +32,7 @@ module ArtifactMigration
       	:database  => dbfile
       )
 
+      ActiveRecord::Base.connection_pool.instance_variable_set('@size', 15)
       ArtifactMigration::RallyArtifacts.create_artifact_classes
     end
   end

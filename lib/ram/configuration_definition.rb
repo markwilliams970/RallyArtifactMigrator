@@ -30,6 +30,8 @@ module ArtifactMigration
 		
 		attr_accessor :default_project_oid
 		
+		attr_accessor :max_threads
+		
 		attr_reader :migration_types
 		attr_reader :project_oids
 		attr_reader :project_mapping

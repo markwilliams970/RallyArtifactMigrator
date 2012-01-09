@@ -18,6 +18,6 @@ gem "multi_json", '~> 1.0'
 gem 'i18n', "~> 0.6.0"
 
 ['activesupport', 'activemodel', 'activerecord', 'actionpack'].each {|d| gem d, "~> 3.1.0"}
-['rally_rest_api', 'sqlite3', 'rake', 'trollop', 'rest-client', 'rainbow', 'json_pure', 'events', 'fastercsv', 'options', "highline"].each do |d|
+['require_all', 'rally_rest_api', 'sqlite3', 'rake', 'trollop', 'rest-client', 'rainbow', 'json_pure', 'events', 'fastercsv', 'options', "highline"].each do |d|
   gem d
 end

@@ -59,16 +59,38 @@ module ArtifactMigration
 				progress = ProgressBar.new 200, "Importing #{type.to_s.titleize}", :label, :bar, :counter, :rate, :eta
 			end
 
-			[:end_type_import, :end_import_projects, :end_update_project_parents, :end_import_project_permissions, :end_update_story_parents, :end_update_portfolio_item_parents, :end_update_story_predecessors, :end_update_artifact_statuses, :end_test_folder_reparent, :end_update_defect_duplicates, :end_attachment_import].each do |event|
-				Importer.on(event) do |type| 
+      Importer.on(:end_type_import) do |type|
+		    if progress
+				  puts "" if progress.count > 0
+				end
+				progress = nil
+			end
+
+			[:end_import_projects, :end_update_project_parents, :end_import_project_permissions].each do |event|
+			  ImportProjects.on(event) do |type| 
 			    if progress
 					  puts "" if progress.count > 0
 					end
 					progress = nil
 				end
 			end
-			
-			Importer.on(:update_status_begin) do |type, count|
+      [:end_update_story_parents, :end_update_portfolio_item_parents, :end_update_story_predecessors, :end_update_artifact_statuses, :end_test_folder_reparent, :end_update_defect_duplicates].each do |event|
+			  ImportArtifacts.on(event) do |type| 
+			    if progress
+					  puts "" if progress.count > 0
+					end
+					progress = nil
+				end
+			end
+      ImportAttachments.on(:end_attachment_import) do |type|
+		    if progress
+				  puts "" if progress.count > 0
+				end
+				progress = nil
+      end
+      
+      
+			ImportArtifacts.on(:update_status_begin) do |type, count|
 				label = "Updating Statuses of #{type.to_s.titleize}"
 				if count > 0
 					progress = ProgressBar.new count, label, :label, :bar, :counter, :rate, :eta
@@ -77,9 +99,36 @@ module ArtifactMigration
 				end
 					
 			end
-						
-			[:import_type_count, :begin_import_projects, :begin_update_project_parents, :begin_import_project_permissions, :begin_update_story_parents, :begin_update_portfolio_item_parents, :begin_update_story_predecessors, :begin_test_folder_reparent, :begin_update_defect_duplicates, :begin_attachment_import].each do |event|
-				Importer.on(event) do |count|					
+      
+      [:begin_import_projects, :begin_update_project_parents, :begin_import_project_permissions].each do |event|
+				ImportProjects.on(event) do |count|
+					label = case event
+						when :begin_import_projects
+						  "Importing Projects"
+						when :begin_update_project_parents
+						  "Updating Project Parents"
+						when :begin_import_project_permissions
+						  "Importing Project Permissions"
+						else
+							if progress
+								progress.label
+							else
+								nil
+							end
+					end
+				
+					progress = ProgressBar.new 200, label, :label, :bar, :counter, :rate, :eta	unless progress
+				
+					if (count > 0)
+						progress.max = count
+					else
+						puts "[#{label}] None to be updated"
+					end
+			  end
+		  end
+
+			[:import_type_count, :begin_update_story_parents, :begin_update_portfolio_item_parents, :begin_update_story_predecessors, :begin_test_folder_reparent, :begin_update_defect_duplicates, :begin_attachment_import].each do |event|
+				ImportArtifacts.on(event) do |count|
 					label = case event
 						when :begin_update_story_parents
 							"Updating Story Parents"
@@ -95,12 +144,6 @@ module ArtifactMigration
 							"Updating Defect Duplicates"
 						when :begin_attachment_import
 							"Importing Attachments"
-						when :begin_import_projects
-						  "Importing Projects"
-						when :begin_update_project_parents
-						  "Updating Project Parents"
-						when :begin_import_project_permissions
-						  "Importing Project Permissions"
 						else
 							if progress
 								progress.label
@@ -108,19 +151,57 @@ module ArtifactMigration
 								nil
 							end
 					end
-					
+				
 					progress = ProgressBar.new 200, label, :label, :bar, :counter, :rate, :eta	unless progress
-					
+				
 					if (count > 0)
 						progress.max = count
 					else
 						puts "[#{label}] None to be updated"
 					end
 				end
-			end
+      end
 			
-			Importer.on(:loop) do
+			[:begin_attachment_import].each do |event|
+				ImportAttachments.on(event) do |count|
+					label = case event
+						when :begin_update_story_parents
+							"Updating Story Parents"
+						when :begin_update_portfolio_item_parents
+							"Updating Portfolio Parents"
+						when :begin_update_story_predecessors
+							"Updating Story Predecessors"
+						when :begin_update_artifact_statuses
+							"Fixing Artifact Statuses"
+						when :begin_test_folder_reparent
+							"Updating Test Folder Parents"
+						when :begin_update_defect_duplicates
+							"Updating Defect Duplicates"
+						when :begin_attachment_import
+							"Importing Attachments"
+						else
+							if progress
+								progress.label
+							else
+								nil
+							end
+					end
+				
+					progress = ProgressBar.new 200, label, :label, :bar, :counter, :rate, :eta	unless progress
+				
+					if (count > 0)
+						progress.max = count
+					else
+						puts "[#{label}] None to be updated"
+					end
+				end
+      end
+			
+			
+			[Importer, ImportArtifacts, ImportProjects, ImportAttachments].each do |klass|
+			  klass.on(:loop) do
 					progress.increment! if progress
+				end
 			end
 		end
 		
