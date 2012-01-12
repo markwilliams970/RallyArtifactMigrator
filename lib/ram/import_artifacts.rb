@@ -54,7 +54,7 @@ module ArtifactMigration
   						Logger.debug "Creating #{attrs[:name]} for project '#{attrs[:project]}' in workspace '#{attrs[:workspace]}'"
   						Logger.debug "#{attrs}"
   						artifact = rally_ds.create(type, attrs)
-  						Logger.info "Created #{type.to_s.humanize}: #{artifact.name}"
+  						Logger.info "Created #{type.to_s.humanize}: #{artifact.name} (#{artifact.object_i_d})"
 
 						  @@outbound_q << {
 						    :map_object => {
@@ -167,6 +167,26 @@ module ArtifactMigration
 				end
 		  end
 	  end
+	  
+	  def self.generate_processing_thread
+	    return Thread.new do
+  			until @@outbound_q.empty? and @@thread_done
+  			  msg = @@outbound_q.pop
+
+  			  if msg.has_key? :map_object
+            @@object_manager.map_artifact msg[:map_object][:source_id], msg[:map_object][:target_id], msg[:map_object][:artifact]
+          end
+
+          if msg.has_key? :import_log
+            ImportTransactionLog.create(:object_i_d => msg[:transaction_log][:object_i_d], :transaction_type => msg[:transaction_log][:transaction_type], :imported_on => msg[:transaction_log][:imported_on])
+          end
+
+          if msg.has_key? :issue_log
+            IssueTransactionLog.create(:object_i_d => msg[:issue_log][:object_i_d], :severity => msg[:issue_log][:severity], :issue_type => msg[:issue_log][:issue_type], :message => msg[:issue_log][:message], :backtrace => msg[:issue_log][:backtrace])
+          end
+        end
+      end
+    end
 		
 		def self.object_manager
 			@@object_manager
@@ -215,6 +235,8 @@ module ArtifactMigration
 			  @@threads << t
 			  Logger.debug "Thread #{i} created"
 		  end
+		  
+		  @@threads << generate_processing_thread
 			
 			klass.all.each do |obj|
 				attrs = {}
@@ -312,21 +334,6 @@ module ArtifactMigration
 			@@thread_done = true
 			@@threads.each { |t| t.join }
 
-			until @@outbound_q.empty?
-			  msg = @@outbound_q.pop
-			  
-			  if msg.has_key? :map_object
-          @@object_manager.map_artifact msg[:map_object][:source_id], msg[:map_object][:target_id], msg[:map_object][:artifact]
-        end
-        
-        if msg.has_key? :import_log
-          ImportTransactionLog.create(:object_i_d => msg[:import_log][:object_i_d], :transaction_type => msg[:import_log][:transaction_type], :imported_on => msg[:import_log][:imported_on])
-        end
-
-        if msg.has_key? :issue_log
-          IssueTransactionLog.create(:object_i_d => msg[:issue_log][:object_i_d], :severity => msg[:issue_log][:severity], :issue_type => msg[:issue_log][:issue_type], :message => msg[:issue_log][:message], :backtrace => msg[:issue_log][:backtrace])
-        end
-      end
 		end
 
 		def self.update_parents(type)
@@ -340,7 +347,7 @@ module ArtifactMigration
 						new_story_parent = @@object_manager.get_mapped_artifact story.parent.to_i
 						
 						if new_story_parent
-							Logger.debug "Updating parent for '#{new_story}' to '#{new_story_parent}'"
+							Logger.debug "Updating parent for '#{new_story}'(#{story.object_i_d}) to '#{new_story_parent}'"
 							new_story.update(:parent => new_story_parent)
 							ImportTransactionLog.create(:object_i_d => story.object_i_d, :transaction_type => 'reparent')
 							
