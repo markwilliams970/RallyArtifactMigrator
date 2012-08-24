@@ -42,7 +42,9 @@ unless opts[:help]
 	
 			if valid
 				begin
-				  ArtifactMigration::Configuration.singleton.target_config.update_existing = opts[:update]
+					ArtifactMigration::Configuration.singleton.source_config.update_existing = opts[:update]
+					ArtifactMigration::Configuration.singleton.target_config.update_existing = opts[:update]
+
 					ArtifactMigration::CLI.run_export if opts[:all] or opts[:export]
 
 					begin

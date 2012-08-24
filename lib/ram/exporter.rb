@@ -2,6 +2,9 @@ require 'active_support/inflector'
 require 'base64'
 require 'rally_rest_api'
 require 'events'
+require 'time'
+require 'rest_client'
+require 'json'
 
 =begin
 
@@ -23,72 +26,94 @@ module ArtifactMigration
 		extend Events::Emitter
 		
 		def self.reset_transaction_log
-	    DatabaseConnection.ensure_database_connection
+			DatabaseConnection.ensure_database_connection
 	    
 			ActiveRecord::Schema.define do
 				ActiveRecord::Migration.verbose = false
 				if ImportTransactionLog.table_exists?
-				  drop_table ImportTransactionLog.table_name.to_sym
-			  end
+					drop_table ImportTransactionLog.table_name.to_sym
+				end
 			  
-			  if IssueTransactionLog.table_exists?
-			    drop_table IssueTransactionLog.table_name.to_sym
-		    end
+				if IssueTransactionLog.table_exists?
+					drop_table IssueTransactionLog.table_name.to_sym
+				end
 			  
-			  if ObjectIdMap.table_exists?
-			    drop_table ObjectIdMap.table_name.to_sym
-			  end
-		  end
-	  end
+				if ObjectIdMap.table_exists?
+					drop_table ObjectIdMap.table_name.to_sym
+				end
+			end
+		end
 		
 		def self.run
-		  DatabaseConnection.ensure_database_connection
-		  
-			prepare
+			@@start_time = Time.now
+
+			DatabaseConnection.ensure_database_connection
 			
+			@@update_existing = Configuration.singleton.source_config.update_existing
+
+			prepare
+
+			last_good = Options.find_by_key "LastGoodRun"
+
+			if @@update_existing and last_good
+				@@last_update = Time.parse last_good.value
+			else
+				@@last_update = Time.local(2000, "jan", 1)
+			end
+
 			c = Configuration.singleton.source_config
 			c.version = ArtifactMigration::RALLY_API_VERSION if c.version.nil? or c.version.empty?
-			
+
 			@@rally_ds = RallyRestAPI.new :username => c.username, :password => c.password, :base_url => c.server, :version => c.version, :http_headers => ArtifactMigration::INTEGRATION_HEADER
-						
+
 			emit :begin_export
-			
+
 			if c.migrate_projects_flag
-			  self.export_projects
-		  end
-			
+				self.export_projects
+			end
+
 			ArtifactMigration::UE_TYPES.each do |type|
-			  Logger.debug "Checking for type #{type} - #{c.migration_types.include? type}"
+				Logger.debug "Checking for type #{type} - #{c.migration_types.include? type}"
 				if c.migration_types.include? type
 					emit :begin_type_export, type
 					export_type type 
 					emit :end_type_export, type
 				end
 			end
-			
+
 			@@workspace = Helper.find_workspace(@@rally_ds, c.workspace_oid)
 
 			if c.migrate_attachments_flag
 				emit :begin_attachment_export
-				export_attachments
+				export_attachments2
 				emit :end_attachment_export
 			end
-			
+
+			unless Options.find_by_key('LastGoodRun').nil?
+				Options.find_by_key('LastGoodRun').update_attributes({:value => @@start_time})
+			else
+				Options.create({:key => 'LastGoodRun', :value => @@start_time})
+			end
+
 			emit :end_export
 		end
-		
+
 		def self.prepare
-			Schema.drop_all_artifact_tables
-			
-			Schema.create_artifact_schemas
-			Schema.create_object_type_map_schema
-      Schema.create_project_scheme
-			Schema.create_attachment_scheme
-			Schema.create_attribute_value_schema
-			
+			Schema.create_options_schema
+
+			unless @@update_existing
+				Schema.drop_all_artifact_tables
+
+				Schema.create_artifact_schemas
+				Schema.create_object_type_map_schema
+				Schema.create_project_scheme
+				Schema.create_attachment_scheme
+				Schema.create_attribute_value_schema
+			end
+
 			attrs = {}
 			@@rw_attrs = {}
-			
+
 			c = Configuration.singleton.source_config
 			ret = Helper.batch_toolkit :url => c.server,
 				:username => c.username,
@@ -97,7 +122,7 @@ module ArtifactMigration
 				:workspace => c.workspace_oid,
 				:type => :type_definition,
 				:fields => %w(Abstract Attributes DisplayName ElementName Name Note Parent)
-			
+
 			ret['Results'].each do |r| 
 				r['Attributes'].each do |a| 
 					attrs[r['ElementName']] = [].to_set unless attrs[r['ElementName']]
@@ -107,37 +132,49 @@ module ArtifactMigration
 					@@rw_attrs[r['ElementName']] << a['Name'].gsub(' ', '') unless a['ReadOnly']
 				end
 			end
-			
+
 			#if c.version.to_f < 1.27
-  			%w(HierarchicalRequirement Defect DefectSuite Task TestCase TestSet).each do |wp|
-  				@@rw_attrs[wp] = @@rw_attrs[wp] + %w(Name Notes Owner Tags Package Description FormattedID Project).to_set
-  			end
-			#end
-			
-			#@@rw_attrs['Task'] = @@rw_attrs['Task'] + %w(Project).to_set
-			
 			%w(HierarchicalRequirement Defect DefectSuite Task TestCase TestSet).each do |wp|
-				@@rw_attrs[wp] = @@rw_attrs[wp] - %w(Successors).to_set
+				Logger.debug "Updating Attributes for type #{wp}"
+
+				if (@@rw_attrs.has_key? wp)
+					@@rw_attrs[wp] = @@rw_attrs[wp] + %w(Name Notes Owner Tags Package Description FormattedID Project).to_set
+				end
 			end
-			
+			#end
+
+			#@@rw_attrs['Task'] = @@rw_attrs['Task'] + %w(Project).to_set
+
+			%w(HierarchicalRequirement Defect DefectSuite Task TestCase TestSet).each do |wp|
+				if @@rw_attrs.has_key? wp
+					@@rw_attrs[wp] = @@rw_attrs[wp] - %w(Successors).to_set
+				end
+			end
+
 			#Logger.debug("Columns for TestSet are #{@@rw_attrs['TestSet']}")
-			
+
 			@@rw_attrs.each { |k, v| Logger.debug "Type #{k} has columns #{k}" }
 			@@rw_attrs.each { |k, v| Schema.update_schema_for_artifact(k.underscore.to_sym, v)}
-			
+
 			emit :export_preperation_complete
 		end
-		
+
 		def self.export_type(type)
 			klass = ArtifactMigration::RallyArtifacts.get_artifact_class(type)
 			c = Configuration.singleton.source_config
-			
+
 			Logger.info("Exporting #{type} with class [#{klass}]")
-			
+
 			c.project_oids.each do |poid|
 				Logger.info("Searching Project #{poid}")
 				emit :exporting, type, poid
-				
+
+				if %w(HierarchicalRequirement Defect DefectSuite Task TestCase PortfolioItem).include? type
+					query = "(LastUpdateDate >= #{@@last_update.utc.iso8601.to_s})"
+				else
+					query = ""
+				end
+
 				ret = Helper.batch_toolkit :url => c.server,
 					:username => c.username,
 					:password => c.password,
@@ -147,23 +184,24 @@ module ArtifactMigration
 					:project_scope_up => c.project_scope_up,
 					:project_scope_down => c.project_scope_down,
 					:type => type,
-					:fields => @@rw_attrs[type.to_s.classify] + %w(UserName).to_set
-			
+					:query => query,
+				:fields => @@rw_attrs[type.to_s.classify] + %w(UserName).to_set
+
 				Logger.info("Found #{ret['Results'].size} #{type.to_s.humanize}")
-				
+
 				ret["Results"].each do |o|
 					attrs = {}
 					artifact = nil
-					
+
 					o.each do |k, v| 
 						if %w(Project PortfolioItem Requirement WorkProduct TestCase Defect DefectSuite TestFolder Parent TestCaseResult Iteration Release TestSet).include? k
 							attrs[k.to_s.underscore.to_sym] = v["ObjectID"] if v
 						elsif %w(PreliminaryEstimate PortfolioItemType).include? k # TODO: Make generic
-						  if (type == :portfolio_item)
-						    Logger.debug "Transforming #{k} - #{v['Name']}" unless v.nil?
-						    attrs[k.to_s.underscore.to_sym] = v['Name'] unless v.nil?
-						    Logger.debug "#{k.to_s.underscore.to_sym} => #{attrs[k.to_s.underscore.to_sym]}"
-						  end
+							if (type == :portfolio_item)
+								Logger.debug "Transforming #{k} - #{v['Name']}" unless v.nil?
+								attrs[k.to_s.underscore.to_sym] = v['Name'] unless v.nil?
+								Logger.debug "#{k.to_s.underscore.to_sym} => #{attrs[k.to_s.underscore.to_sym]}"
+							end
 						elsif %w(Owner SubmittedBy).include? k
 							attrs[k.to_s.underscore.to_sym] = v["UserName"] if v
 						elsif %w(Tags Predecessors Successors TestCases Duplicates).include? k
@@ -171,7 +209,7 @@ module ArtifactMigration
 							v.each do |t|
 								rels.push t['ObjectID']
 							end if v
-							
+
 							attrs[k.to_s.underscore.to_sym] = rels.to_json
 						else
 							if v.class == Hash
@@ -183,20 +221,42 @@ module ArtifactMigration
 							end
 						end
 					end
-					
+
 					c.ignore_fields[type].each { |a| attrs.delete a } if c.ignore_fields.has_key? type
-					
+
 					attrs[:object_i_d] = o["ObjectID"]
 					#Logger.debug(attrs)
-					artifact = klass.create(attrs) unless klass.find_by_object_i_d(o['ObjectID'].to_i)
-					ObjectTypeMap.create(:object_i_d => artifact.object_i_d, :artifact_type => type.to_s) if artifact and ObjectTypeMap.find_by_object_i_d(artifact.object_i_d).nil?
-					
+					unless klass.find_by_object_i_d(o['ObjectID'].to_i).nil?
+						artifact = klass.find_by_object_i_d(o['ObjectID'].to_i)
+						artifact.update_attributes(attrs)
+					else
+						artifact = klass.create(attrs)
+						ObjectTypeMap.create(:object_i_d => artifact.object_i_d, :artifact_type => type.to_s) if artifact and ObjectTypeMap.find_by_object_i_d(artifact.object_i_d).nil?
+					end
+
 					emit :artifact_exported, artifact
 					Logger.debug(artifact.attributes) if artifact
 				end
 			end
 		end
-		
+
+		def self.collect_child_projects(project_list, parent_id)
+			ret = []
+
+			project_list.each do |p|
+				if p.has_key? 'Parent'
+					if p["Parent"]
+						if p["Parent"]["ObjectID"].to_i == parent_id.to_i
+							ret << p["ObjectID"]
+							ret.concat collect_child_projects(project_list, p["ObjectID"])
+						end
+					end
+				end
+			end
+
+			ret
+		end
+
 		def self.export_projects
 			Logger.info("Exporting Projects")
 
@@ -212,20 +272,27 @@ module ArtifactMigration
 				:type => :project,
 				:fields => %w(ObjectID Name Owner Description Parent State UserName).to_set
 
-      projects = Hash[ ret['Results'].collect { |elt| [elt['ObjectID'], elt] } ]
+			projects = Hash[ ret['Results'].collect { |elt| [elt['ObjectID'], elt] } ]
+
+			all_projects = [].concat c.project_oids.to_a
+			c.project_oids.each { |poid| all_projects << collect_child_projects(ret['Results'], poid.to_i) } if c.migrate_child_projects_flag
+
+			Logger.debug "All Projects: #{all_projects}"
+			all_projects.flatten.uniq.each { |poid| c.add_project_oid poid }
+			
 			c.project_oids.each do |poid|
-				Logger.info("Exporting Project Info for Project OID [#{poid}]")					
+				Logger.info("Exporting Project Info for Project OID [#{poid}]")
 				p = projects[poid]
-				
+
 				pp = nil
 				ppoid = -1
-				
+
 				pp = p["Parent"] if p.has_key? "Parent"
 				ppoid = pp["ObjectID"] if pp
-				
+
 				ArtifactMigration::Project.find_or_create_by_source_object_i_d(:source_object_i_d => p['ObjectID'], :source_parent_i_d => ppoid, :name => p["Name"], :description => p["Description"], :owner => p["Owner"]["UserName"], :state => p["State"])
 			end
-			
+
 			ret = Helper.batch_toolkit :url => c.server,
 				:username => c.username,
 				:password => c.password,
@@ -235,9 +302,9 @@ module ArtifactMigration
 				:project_scope_down => c.project_scope_down,
 				:type => :workspace_permission,
 				:fields => %w(ObjectID User Role Workspace UserName Name).to_set
-			
+
 			ret["Results"].each { |wp| ArtifactMigration::WorkspacePermission.create(:workspace_i_d => wp["Workspace"]["ObjectID"], :user => wp["User"]["UserName"], :role => wp["Role"]) }
-			
+
 			ret = Helper.batch_toolkit :url => c.server,
 				:username => c.username,
 				:password => c.password,
@@ -247,14 +314,89 @@ module ArtifactMigration
 				:project_scope_down => c.project_scope_down,
 				:type => :project_permission,
 				:fields => %w(ObjectID User Role Project UserName Name).to_set
-			
+
 			ret["Results"].each do |pp|
-			  if projects.has_key? pp["Project"]["ObjectID"]
-			    ArtifactMigration::ProjectPermission.create(:project_i_d => pp["Project"]["ObjectID"], :user => pp["User"]["UserName"], :role => pp["Role"])
-		    end
-		  end
-	  end
-	
+				if projects.has_key? pp["Project"]["ObjectID"]
+					ArtifactMigration::ProjectPermission.create(:project_i_d => pp["Project"]["ObjectID"], :user => pp["User"]["UserName"], :role => pp["Role"])
+				end
+			end
+		end
+
+		def self.export_attachments2
+			Logger.info("Exporting Attachments")
+
+			c = Configuration.singleton.source_config
+
+			c.project_oids.each do |poid|
+				Logger.info("Exporting Attachments for Project OID [#{poid}]")
+				enc_auth = Base64.encode64("#{c.username}:#{c.password}").strip
+
+				ret = Helper.batch_toolkit :url => c.server,
+					:username => c.username,
+					:password => c.password,
+					:version => c.version,
+					:workspace => c.workspace_oid,
+					:limit => 1,
+					:type => :attachment,
+					:fields => %w(ObjectID Content Artifact ContentType Description Name Size TestCaseResult User UserName).to_set
+
+				emit :saving_attachments_begin, ret["Results"].size
+				ret["Results"].each do |attachment|
+								Logger.info "\tAttachment: #{attachment["Name"]}"
+
+								art_oid = attachment["Artifact"]["ObjectID"] if attachment.has_key? "Artifact" and attachment["Artifact"]
+								art_oid = attachment["TestCaseResult"]["ObjectID"] if attachment.has_key? "TestCaseResult" and attachment["TestCaseResult"]
+
+								art_oid = art_oid.to_s
+								Dir::mkdir('Attachments') unless File.exists?('Attachments')
+								Dir::mkdir(File.join('Attachments', art_oid)) unless File.exist?(File.join('Attachments', art_oid))
+
+								File.open(File.join('Attachments', art_oid, attachment["ObjectID"].to_s), "w") do |f|
+									begin
+										Logger.debug "Attachment details - #{attachment}"
+										res_s = RestClient.get(attachment["Content"]["_ref"], 
+											#:verify_ssl => false,
+											#:headers => {
+												:authorization => "Basic #{enc_auth}",
+												:accept => '*/*; application/javascript',
+												:rallyIntegration_name => 'Rally Artifact Migrator',
+												:rallyIntegration_version => ArtifactMigration::VERSION,
+												:rallyIntegration_vendor => 'Rally Software'
+											#}
+										)
+
+										res = JSON.parse(res_s.to_s)
+										#Logger.debug "Content info #{res["Content"]}"
+
+										f.write(Base64.decode64(res["AttachmentContent"]["Content"]))
+
+										attrs = {
+											:object_i_d => attachment["ObjectID"],
+											:name => attachment["Name"],
+											:description => attachment["Description"], 
+											:user_name => attachment["User"]["UserName"],
+											:artifact_i_d => art_oid.to_i,
+											:content_type => attachment["ContentType"]
+										}
+
+										Attachment.create(attrs) unless Attachment.find_by_object_i_d(attachment["ObjectID"])
+										ObjectTypeMap.create(:object_i_d => attachment["ObjectID"], :artifact_type => 'attachment') if attachment and ObjectTypeMap.find_by_object_i_d(attachment.object_i_d).nil?
+
+										emit :attachment_exported, att_oid, attachment
+									rescue EOFError => e
+										f.rewind
+										Logger.debug "Error saving file, retrying..."
+
+										emit :attachment_export_failed, att_oid, attachment
+
+										retry
+									end
+								end unless File.exists? File.join('Attachments', art_oid, attachment["ObjectID"].to_s)
+				end
+				emit :saving_attachments_end, ret["Results"].size
+			end
+		end
+
 		def self.export_attachments
 			Logger.info("Exporting Attachments")
 
@@ -262,7 +404,7 @@ module ArtifactMigration
 
 			c.project_oids.each do |poid|
 				Logger.info("Exporting Attachments for Project OID [#{poid}]")
-				
+
 				ret = Helper.batch_toolkit :url => c.server,
 					:username => c.username,
 					:password => c.password,
@@ -275,16 +417,17 @@ module ArtifactMigration
 					:fields => %w(ObjectID Attachments Name).to_set
 
 				project = Helper.find_project(@@rally_ds, @@workspace, poid) if ret["Results"].size > 0
-				
+
 				emit :saving_attachments_begin, ret["Results"].size
 				ret["Results"].each do |art|
 					if (art['Attachments'] and (art['Attachments'].size > 0))
 						Logger.info "#{art['Name']} [#{art['ObjectID']}] has #{art['Attachments'].size} Attachments"
-					
+
 						artifact_res = @@rally_ds.find(:artifact, :fetch => true, :project => project, :project_scope_up => false, :project_scope_down => false) { equal :object_i_d, art['ObjectID'] }
+						Logger.debug "Found Artifact: #{artifact_res.results}"
 						artifact = artifact_res.results.first
 
-						if artifact.attachments
+						if artifact and artifact.attachments
 
 							artifact.attachments.each do |attachment|
 								Logger.info "\tAttachment: #{attachment.name}"
@@ -295,7 +438,7 @@ module ArtifactMigration
 								File.open(File.join('Attachments', artifact.object_i_d, attachment.object_i_d), "w") do |f|
 									begin
 										f.write(Base64.decode64(attachment.content.content))
-									
+
 										attrs = {
 											:object_i_d => attachment.object_i_d,
 											:name => attachment.name,
@@ -304,17 +447,17 @@ module ArtifactMigration
 											:artifact_i_d => artifact.object_i_d,
 											:content_type => attachment.content_type
 										}
-										
+
 										Attachment.create(attrs) unless Attachment.find_by_object_i_d(attachment.object_i_d)
 										ObjectTypeMap.create(:object_i_d => attachment.object_i_d, :artifact_type => 'attachment') if attachment and ObjectTypeMap.find_by_object_i_d(attachment.object_i_d).nil?
-										
+
 										emit :attachment_exported, artifact, attachment
 									rescue EOFError => e
 										f.rewind
 										Logger.debug "Error saving file, retrying..."
-										
+
 										emit :attachment_export_failed, artifact, attachment
-										
+
 										retry
 									end
 								end unless File.exists? File.join('Attachments', artifact.object_i_d, attachment.object_i_d)
@@ -322,7 +465,7 @@ module ArtifactMigration
 						end
 					end
 				end
-				emit :saving_attachments_end, ret["Results"].size				
+				emit :saving_attachments_end, ret["Results"].size
 			end
 		end
 	end

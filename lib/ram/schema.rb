@@ -64,6 +64,20 @@ module ArtifactMigration
 			end
 		end
 		
+		def self.create_options_schema
+			ActiveRecord::Schema.define do
+				ActiveRecord::Migration.verbose = false
+				unless Options.table_exists?
+					create_table Options.table_name.to_sym, :id => true do |t|
+						t.column :key, :string
+						t.column :value, :text
+					end
+
+					add_index Options.table_name.to_sym, :key, :unique => true
+				end
+			end
+		end
+
 		def self.create_object_cache_schema
 			ActiveRecord::Schema.define do
 				ActiveRecord::Migration.verbose = false

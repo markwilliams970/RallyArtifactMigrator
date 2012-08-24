@@ -8,8 +8,16 @@ module ArtifactMigration
 		extend Events::Emitter
 		
 		def self.find_workspace(rally, workspace_oid)
-			rally.user.subscription.workspaces.each do |ws|
-				return ws if ws.object_i_d == workspace_oid.to_s
+			Logger.debug "FWS U - #{rally.user.inspect}"
+			u = rally.user
+			Logger.debug "FWS S - #{u.subscription.inspect}"
+			s = u.subscription
+			Logger.debug "FWS WSS - #{s.workspaces.inspect}"
+			wss = s.workspaces
+			wss.each do |ws|
+			#rally.find_all(:workspace, :workspace => nil, :fetch => true).each do |ws|
+				Logger.debug "Inspecting WS - #{ws}"
+				return ws if ws.object_i_d.to_s == workspace_oid.to_s
 			end
 			
 			nil
@@ -27,7 +35,9 @@ module ArtifactMigration
 			enc_password = Base64.encode64("#{opts[:username]}:#{opts[:password]}").strip
 			base_url = "#{opts[:url]}/webservice/#{opts[:version]}"
 			start = 1
-			size = 2
+			size = 1
+			size = opts[:limit] if opts.has_key? :limit
+			size = size + 1
 			psu = opts[:projectScopeUp] || false
 			psd = opts[:projectScopeDown] || false
 			ret = {'Results' => []}
@@ -42,7 +52,7 @@ module ArtifactMigration
 					:rallyIntegration_vendor => 'Rally Software'
 				})
 			
-			query = "/#{opts[:type].to_s.sub('_', '')}?query=(ObjectID > 0)&fetch=ObjectID,"
+			query = "/#{opts[:type].to_s.sub('_', '')}?query=#{opts[:query] or '(ObjectID > 0)'}&fetch=ObjectID,"
 			opts[:fields].each do |e|
 				query += "#{e},"
 			end
@@ -53,7 +63,9 @@ module ArtifactMigration
 			query += "&projectScopeDown=#{psd}"
 			query += "&workspace=#{base_url}/workspace/#{opts[:workspace]}" if opts[:workspace]
 			query += "&project=#{base_url}/project/#{opts[:project]}" if opts[:project]
-			
+
+			Logger.debug(query)
+
 			emit :batch_toolkit_begin, opts[:type]
 			while start < size
 				res = adhoc.post( :adHocQuery => ({:adhoc => (query + "&start=#{start}")}.to_json) )
@@ -63,7 +75,9 @@ module ArtifactMigration
 					if e[0] == 'Results'
 						ret['Results'].concat e[1]
 					else
-						size = e[1] if e[0] == 'TotalResultCount'
+						unless opts.has_key? :limit
+							size = e[1] if e[0] == 'TotalResultCount'
+						end
 						ret[e[0]] = e[1]
 					end
 				end
