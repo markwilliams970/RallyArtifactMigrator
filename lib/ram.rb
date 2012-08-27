@@ -5,6 +5,7 @@ require 'active_support/inflector'
 require 'rally_rest_api'
 require 'active_record'
 require 'require_all'
+require 'rally_api'
 
 require_all "#{File.dirname(__FILE__)}/ram/**/*.rb"
 
@@ -15,14 +16,15 @@ module ArtifactMigration
 	UE_TYPES = [:test_set, :test_folder, :portfolio_item].to_set + ArtifactMigration::EE_TYPES
 	ARTIFACT_TYPES = [:portfolio_item, :hierarchical_requirement, :defect, :defect_suite, :test_case, :task]
 
-	RALLY_API_VERSION = "1.29"
+	RALLY_API_VERSION = "1.36"
 	
 	VERSION = File.read(File.join(File.dirname(__FILE__), '..', 'VERSION'))
 	
-	INTEGRATION_HEADER = CustomHttpHeader.new
+	INTEGRATION_HEADER = RallyAPI::CustomHttpHeader.new
 	INTEGRATION_HEADER.vendor = "Rally Software"
 	INTEGRATION_HEADER.name = "Rally Artifact Migrator"
 	INTEGRATION_HEADER.version = ArtifactMigration::VERSION
+	
 =begin
 	eager_autoload do
 		autoload :ConfigurationDefinition

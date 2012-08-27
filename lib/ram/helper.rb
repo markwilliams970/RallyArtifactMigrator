@@ -30,6 +30,10 @@ module ArtifactMigration
 			
 			nil
 		end
+
+		def self.create_ref(type, oid)
+			{"_ref" => "#{type}/#{oid}.js", "ObjectID" => oid}
+		end
 		
 		def self.batch_toolkit(opts = {})
 			enc_password = Base64.encode64("#{opts[:username]}:#{opts[:password]}").strip

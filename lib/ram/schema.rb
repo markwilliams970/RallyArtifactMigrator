@@ -2,7 +2,7 @@ require 'active_record'
 require 'active_support/inflector'
 
 module ArtifactMigration
-	class Schema	  
+	class Schema
 		def self.create_transaction_log_schema
 			ActiveRecord::Schema.define do
 				ActiveRecord::Migration.verbose = false
@@ -122,7 +122,7 @@ module ArtifactMigration
 			ActiveRecord::Schema.define do
 				ActiveRecord::Migration.verbose = false
 				
-				unless ArtifactMigration::Project.table_exists?
+        unless ArtifactMigration::Project.table_exists?
   				create_table :projects, :id => false, :force => false do |t|
   					t.column :source_object_i_d, :integer
   					t.column :target_object_i_d, :integer
@@ -136,9 +136,9 @@ module ArtifactMigration
   				add_index :projects, :source_object_i_d, :unique => true
   				add_index :projects, :target_object_i_d, :unique => true
   				add_index :projects, :source_parent_i_d
-  			end
-  			
-  			unless ArtifactMigration::ProjectPermission.table_exists?
+        end
+
+        unless ArtifactMigration::ProjectPermission.table_exists?
   				create_table :project_permissions, :id => false, :force => false do |t|
   					t.column :project_i_d, :integer
   					t.column :user, :string
@@ -147,9 +147,9 @@ module ArtifactMigration
 				
   				add_index :project_permissions, :project_i_d
   				add_index :project_permissions, :user
-			  end
+        end
 
-  			unless ArtifactMigration::WorkspacePermission.table_exists?
+        unless ArtifactMigration::WorkspacePermission.table_exists?
   				create_table :workspace_permissions, :id => false, :true => false do |t|
   					t.column :workspace_i_d, :integer
   					t.column :user, :string
@@ -158,11 +158,11 @@ module ArtifactMigration
 				
   				add_index :workspace_permissions, :workspace_i_d
   				add_index :workspace_permissions, :user
-			  end
+        end
 			end
 		end
 		
-		def self.create_attribute_value_schema
+    def self.create_attribute_value_schema
 			ActiveRecord::Schema.define do
 				ActiveRecord::Migration.verbose = false
 				
@@ -174,9 +174,22 @@ module ArtifactMigration
 				  t.column :values, :text
 			  end
 			end
-	  end
+    end
 		
-		def self.create_attachment_scheme
+		def self.create_attachments_list_schema
+			ActiveRecord::Schema.define do
+				ActiveRecord::Migration.verbose = false
+				
+				create_table :attachments_lists, :id => false, :force => true do |t|
+					t.column :object_i_d, :integer
+					t.column :artifact_i_d, :integer
+				end
+				
+				add_index :attachments_lists, :object_i_d, :unique => true
+			end
+		end
+		
+		def self.create_attachment_schema
 			ActiveRecord::Schema.define do
 				ActiveRecord::Migration.verbose = false
 				

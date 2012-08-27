@@ -13,11 +13,11 @@ group :development do
 #  gem "rspec", ">= 2"
 end
 
-#gem "rally_api", "> 0.3"
+gem "rally_api", "> 0.5"
 gem "multi_json", '~> 1.0'
 gem 'i18n', "~> 0.6.0"
 
 ['activesupport', 'activemodel', 'activerecord', 'actionpack'].each {|d| gem d, "~> 3.1.0"}
-['rally_rest_api', 'sqlite3', 'rake', 'trollop', 'rest-client', 'rainbow', 'json_pure', 'events', 'fastercsv', 'options', "highline"].each do |d|
+['require_all', 'sqlite3', 'rake', 'trollop', 'rest-client', 'rainbow', 'json_pure', 'events', 'fastercsv', 'options', "highline"].each do |d|
   gem d
 end

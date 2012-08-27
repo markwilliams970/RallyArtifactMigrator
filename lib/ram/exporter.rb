@@ -1,7 +1,7 @@
 require 'active_support/inflector'
 require 'base64'
-require 'rally_rest_api'
 require 'events'
+require 'rally_api'
 require 'time'
 require 'rest_client'
 require 'json'
@@ -64,7 +64,17 @@ module ArtifactMigration
 			c = Configuration.singleton.source_config
 			c.version = ArtifactMigration::RALLY_API_VERSION if c.version.nil? or c.version.empty?
 
-			@@rally_ds = RallyRestAPI.new :username => c.username, :password => c.password, :base_url => c.server, :version => c.version, :http_headers => ArtifactMigration::INTEGRATION_HEADER
+			rconfig = {}
+			rconfig[:base_url] = c.server
+			rconfig[:username] = c.username
+			rconfig[:password] = c.password
+			rconfig[:version] = c.version
+			rconfig[:headers] = ArtifactMigration::INTEGRATION_HEADER
+			rconfig[:logger] = ::Logger.new("rallydev.log")
+			rconfig[:debug] = false
+			
+			@@rally_ds = RallyAPI::RallyRestJson.new rconfig
+			@@workspace = { "_ref" => "#{c.server}/webservice/#{c.version}/workspace/#{c.workspace_oid}.js" }
 
 			emit :begin_export
 
@@ -80,8 +90,6 @@ module ArtifactMigration
 					emit :end_type_export, type
 				end
 			end
-
-			@@workspace = Helper.find_workspace(@@rally_ds, c.workspace_oid)
 
 			if c.migrate_attachments_flag
 				emit :begin_attachment_export
@@ -105,9 +113,10 @@ module ArtifactMigration
 				Schema.drop_all_artifact_tables
 
 				Schema.create_artifact_schemas
+        Schema.create_attachments_list_schema
 				Schema.create_object_type_map_schema
 				Schema.create_project_scheme
-				Schema.create_attachment_scheme
+				Schema.create_attachment_schema
 				Schema.create_attribute_value_schema
 			end
 
@@ -138,7 +147,7 @@ module ArtifactMigration
 				Logger.debug "Updating Attributes for type #{wp}"
 
 				if (@@rw_attrs.has_key? wp)
-					@@rw_attrs[wp] = @@rw_attrs[wp] + %w(Name Notes Owner Tags Package Description FormattedID Project).to_set
+					@@rw_attrs[wp] = @@rw_attrs[wp] + %w(Name Notes Owner Tags Package Description FormattedID Project Attachments).to_set
 				end
 			end
 			#end
@@ -211,6 +220,14 @@ module ArtifactMigration
 							end if v
 
 							attrs[k.to_s.underscore.to_sym] = rels.to_json
+            elsif %w(Attachments).include? k
+              Logger.debug "Found Attachments - #{v}" if v.size > 0
+              v.each do |attach|
+                if AttachmentsList.find_by_object_i_d(attach["ObjectID"]).nil?
+                  AttachmentsList.create(:object_i_d => attach["ObjectID"], :artifact_i_d => o["ObjectID"])
+                  Logger.debug "Adding Attachment - #{attach}"
+                end
+              end
 						else
 							if v.class == Hash
 								if v.has_key? "LinkID"
@@ -293,31 +310,33 @@ module ArtifactMigration
 				ArtifactMigration::Project.find_or_create_by_source_object_i_d(:source_object_i_d => p['ObjectID'], :source_parent_i_d => ppoid, :name => p["Name"], :description => p["Description"], :owner => p["Owner"]["UserName"], :state => p["State"])
 			end
 
-			ret = Helper.batch_toolkit :url => c.server,
-				:username => c.username,
-				:password => c.password,
-				:version => c.version,
-				:workspace => c.workspace_oid,
-				:project_scope_up => c.project_scope_up,
-				:project_scope_down => c.project_scope_down,
-				:type => :workspace_permission,
-				:fields => %w(ObjectID User Role Workspace UserName Name).to_set
+			if c.migrate_project_permissions_flag
+				ret = Helper.batch_toolkit :url => c.server,
+					:username => c.username,
+					:password => c.password,
+					:version => c.version,
+					:workspace => c.workspace_oid,
+					:project_scope_up => c.project_scope_up,
+					:project_scope_down => c.project_scope_down,
+					:type => :workspace_permission,
+					:fields => %w(ObjectID User Role Workspace UserName Name).to_set
 
-			ret["Results"].each { |wp| ArtifactMigration::WorkspacePermission.create(:workspace_i_d => wp["Workspace"]["ObjectID"], :user => wp["User"]["UserName"], :role => wp["Role"]) }
+				ret["Results"].each { |wp| ArtifactMigration::WorkspacePermission.create(:workspace_i_d => wp["Workspace"]["ObjectID"], :user => wp["User"]["UserName"], :role => wp["Role"]) }
 
-			ret = Helper.batch_toolkit :url => c.server,
-				:username => c.username,
-				:password => c.password,
-				:version => c.version,
-				:workspace => c.workspace_oid,
-				:project_scope_up => c.project_scope_up,
-				:project_scope_down => c.project_scope_down,
-				:type => :project_permission,
-				:fields => %w(ObjectID User Role Project UserName Name).to_set
+				ret = Helper.batch_toolkit :url => c.server,
+					:username => c.username,
+					:password => c.password,
+					:version => c.version,
+					:workspace => c.workspace_oid,
+					:project_scope_up => c.project_scope_up,
+					:project_scope_down => c.project_scope_down,
+					:type => :project_permission,
+					:fields => %w(ObjectID User Role Project UserName Name).to_set
 
-			ret["Results"].each do |pp|
-				if projects.has_key? pp["Project"]["ObjectID"]
-					ArtifactMigration::ProjectPermission.create(:project_i_d => pp["Project"]["ObjectID"], :user => pp["User"]["UserName"], :role => pp["Role"])
+				ret["Results"].each do |pp|
+					if projects.has_key? pp["Project"]["ObjectID"]
+						ArtifactMigration::ProjectPermission.create(:project_i_d => pp["Project"]["ObjectID"], :user => pp["User"]["UserName"], :role => pp["Role"])
+					end
 				end
 			end
 		end
@@ -325,75 +344,50 @@ module ArtifactMigration
 		def self.export_attachments2
 			Logger.info("Exporting Attachments")
 
-			c = Configuration.singleton.source_config
+			emit :saving_attachments_begin, AttachmentsList.count
 
-			c.project_oids.each do |poid|
-				Logger.info("Exporting Attachments for Project OID [#{poid}]")
-				enc_auth = Base64.encode64("#{c.username}:#{c.password}").strip
+      AttachmentsList.all.each do |attl|
+        attachment = @@rally_ds.read(:attachment, attl.object_i_d)
 
-				ret = Helper.batch_toolkit :url => c.server,
-					:username => c.username,
-					:password => c.password,
-					:version => c.version,
-					:workspace => c.workspace_oid,
-					:limit => 1,
-					:type => :attachment,
-					:fields => %w(ObjectID Content Artifact ContentType Description Name Size TestCaseResult User UserName).to_set
+				Logger.info "\tAttachment: #{attachment["Name"]}"
 
-				emit :saving_attachments_begin, ret["Results"].size
-				ret["Results"].each do |attachment|
-								Logger.info "\tAttachment: #{attachment["Name"]}"
+        art_oid = attl.artifact_i_d.to_s
 
-								art_oid = attachment["Artifact"]["ObjectID"] if attachment.has_key? "Artifact" and attachment["Artifact"]
-								art_oid = attachment["TestCaseResult"]["ObjectID"] if attachment.has_key? "TestCaseResult" and attachment["TestCaseResult"]
+        Dir::mkdir('Attachments') unless File.exists?('Attachments')
+        Dir::mkdir(File.join('Attachments', art_oid)) unless File.exist?(File.join('Attachments', art_oid))
 
-								art_oid = art_oid.to_s
-								Dir::mkdir('Attachments') unless File.exists?('Attachments')
-								Dir::mkdir(File.join('Attachments', art_oid)) unless File.exist?(File.join('Attachments', art_oid))
+        File.open(File.join('Attachments', art_oid, attachment["ObjectID"].to_s), "w") do |f|
+          begin
+            Logger.debug "Attachment details - #{attachment}"
 
-								File.open(File.join('Attachments', art_oid, attachment["ObjectID"].to_s), "w") do |f|
-									begin
-										Logger.debug "Attachment details - #{attachment}"
-										res_s = RestClient.get(attachment["Content"]["_ref"], 
-											#:verify_ssl => false,
-											#:headers => {
-												:authorization => "Basic #{enc_auth}",
-												:accept => '*/*; application/javascript',
-												:rallyIntegration_name => 'Rally Artifact Migrator',
-												:rallyIntegration_version => ArtifactMigration::VERSION,
-												:rallyIntegration_vendor => 'Rally Software'
-											#}
-										)
+            content = attachment["Content"].read({:fetch => "Content"})
+            Logger.debug "Attachment Content - #{content}"
 
-										res = JSON.parse(res_s.to_s)
-										#Logger.debug "Content info #{res["Content"]}"
+            f.write(Base64.decode64(content["Content"]))
 
-										f.write(Base64.decode64(res["AttachmentContent"]["Content"]))
+            attrs = {
+              :object_i_d => attachment["ObjectID"],
+              :name => attachment["Name"],
+              :description => attachment["Description"], 
+              :user_name => attachment["User"]["UserName"],
+              :artifact_i_d => art_oid.to_i,
+              :content_type => attachment["ContentType"]
+            }
 
-										attrs = {
-											:object_i_d => attachment["ObjectID"],
-											:name => attachment["Name"],
-											:description => attachment["Description"], 
-											:user_name => attachment["User"]["UserName"],
-											:artifact_i_d => art_oid.to_i,
-											:content_type => attachment["ContentType"]
-										}
+            Attachment.create(attrs) unless Attachment.find_by_object_i_d(attachment["ObjectID"])
+            ObjectTypeMap.create(:object_i_d => attachment["ObjectID"], :artifact_type => 'attachment') if attachment and ObjectTypeMap.find_by_object_i_d(attachment["ObjectID"]).nil?
 
-										Attachment.create(attrs) unless Attachment.find_by_object_i_d(attachment["ObjectID"])
-										ObjectTypeMap.create(:object_i_d => attachment["ObjectID"], :artifact_type => 'attachment') if attachment and ObjectTypeMap.find_by_object_i_d(attachment.object_i_d).nil?
+            emit :attachment_exported, attl.artifact_i_d, attachment
+          rescue EOFError
+            f.rewind
+            Logger.debug "Error saving file, retrying..."
 
-										emit :attachment_exported, att_oid, attachment
-									rescue EOFError => e
-										f.rewind
-										Logger.debug "Error saving file, retrying..."
+            emit :attachment_export_failed, att_oid, attachment
 
-										emit :attachment_export_failed, att_oid, attachment
-
-										retry
-									end
-								end unless File.exists? File.join('Attachments', art_oid, attachment["ObjectID"].to_s)
+            retry
+          end
 				end
-				emit :saving_attachments_end, ret["Results"].size
+				emit :saving_attachments_end, AttachmentsList.count
 			end
 		end
 
@@ -452,7 +446,7 @@ module ArtifactMigration
 										ObjectTypeMap.create(:object_i_d => attachment.object_i_d, :artifact_type => 'attachment') if attachment and ObjectTypeMap.find_by_object_i_d(attachment.object_i_d).nil?
 
 										emit :attachment_exported, artifact, attachment
-									rescue EOFError => e
+									rescue EOFError
 										f.rewind
 										Logger.debug "Error saving file, retrying..."
 

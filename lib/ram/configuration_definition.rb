@@ -39,6 +39,7 @@ module ArtifactMigration
 		attr_reader :migrate_attachments_flag
 		attr_reader :migrate_projects_flag
 		attr_reader :migrate_child_projects_flag
+		attr_reader :migrate_project_permissions_flag
 
 		def initialize
 			@project_oids = [].to_set
@@ -74,6 +75,10 @@ module ArtifactMigration
 		def migrate_type(type)
 			@migration_types << type
 		end
+
+		def dont_migrate_type(type)
+			@migration_types = @migration_types - type
+		end
 		
 		def migrate_ee_types
 			ArtifactMigration::EE_TYPES.each { |t| migrate_type t }
@@ -93,6 +98,10 @@ module ArtifactMigration
 
 		def migrate_child_projects
 			@migrate_child_projects_flag = true
+		end
+
+		def migrate_project_permissions
+			@migrate_project_permissions = true
 		end
 		
 		def map_project_oid(options = {})

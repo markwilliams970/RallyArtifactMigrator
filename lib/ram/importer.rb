@@ -1,15 +1,9 @@
 require 'active_support/inflector'
-require 'rally_rest_api'
 require 'json'
 require 'net/http'
 require 'net/https'
 require 'events'
-
-# This is a hack!
-O_ALLOWED_TYPES = RallyRestAPI::ALLOWED_TYPES
-class RallyRestAPI
-	ALLOWED_TYPES = O_ALLOWED_TYPES + %w(portfolio_item type preliminary_estimate state)
-end
+require 'rally_api'
 
 module ArtifactMigration
 	class Importer
@@ -31,7 +25,7 @@ module ArtifactMigration
 
 				if config.migration_types.include? type
 					emit :begin_type_import, type
-					import_type type 
+					import_type type
 					emit :end_type_import, type
 				end
 
@@ -64,17 +58,24 @@ module ArtifactMigration
 			config = Configuration.singleton.target_config
 			config.version = ArtifactMigration::RALLY_API_VERSION if config.version.nil?
 
-			@@rally_ds = RallyRestAPI.new :username => config.username, :password => config.password, :base_url => config.server, :version => config.version, :http_headers => ArtifactMigration::INTEGRATION_HEADER, :logger => ::Logger.new("rally.log")
-			Logger.debug "RallyDS - #{@@rally_ds.user.type}"
-			@@workspace = Helper.find_workspace @@rally_ds, config.workspace_oid
+			rconfig = {}
+			rconfig[:base_url] = config.server
+			rconfig[:username] = config.username
+			rconfig[:password] = config.password
+			rconfig[:version] = config.version
+			rconfig[:headers] = ArtifactMigration::INTEGRATION_HEADER
+			rconfig[:logger] = ::Logger.new("rallydev.log")
+			rconfig[:debug] = false
+			
+			@@rally_ds = RallyAPI::RallyRestJson.new rconfig
+			@@workspace = { "_ref" => "#{config.server}/webservice/#{config.version}/workspace/#{config.workspace_oid}.js" }
 
 			Logger.debug "Using Workspace - #{@@workspace}"
 
 			@@projects = {}
 			@@user_cache = {}
 			@@pi_attr_cache = {}
-
-			@@object_manager = ObjectManager.new @@rally_ds, @@workspace
+			@@object_manager = ObjectManager.new(@@rally_ds, @@workspace)
 		end
 
 		def self.object_manager
@@ -119,15 +120,21 @@ module ArtifactMigration
 			new_oid = config.project_mapping.has_key?(old_oid.to_i) ? config.project_mapping[old_oid.to_i] : config.default_project_oid
 			project = nil
 
+      unless new_oid
+        pmap = Project.find_by_source_object_i_d(old_oid)
+        new_oid = pmap.target_object_i_d if pmap
+      end
+			Logger.debug "Map Project - #{old_oid} => #{new_oid}"
+
 			if new_oid
 				project = @@projects[new_oid]
 				unless project
-					project = Helper.find_project @@rally_ds, @@workspace, new_oid
+					project = Helper.create_ref :project, new_oid
 					@@projects[new_oid] = project if project
 				end
 			end
 
-			Logger.debug "Project OID #{old_oid} maps to #{project.object_i_d}" if project
+			Logger.debug "Project OID #{old_oid} maps to #{project}" if project
 			project
 		end
 
@@ -137,13 +144,24 @@ module ArtifactMigration
 			mapped_un = config.username_mapping.has_key?(old_usr) ? config.username_mapping[old_usr] : old_usr
 
 			if mapped_un
-				@@user_cache[mapped_un] = (@@rally_ds.find(:user, :workspace => @@workspace) { equal :user_name, mapped_un }).results.first if @@user_cache[mapped_un].nil?
+				uq = RallyAPI::RallyQuery.new()
+				uq.type = :user
+				uq.workspace = @@workspace
+				uq.query_string = "(UserName = \"#{mapped_un}\")"
+
+				@@user_cache[mapped_un] = (@@rally_ds.find(uq)).results.first if @@user_cache[mapped_un].nil?
 
 				if @@user_cache.has_key? mapped_un
 					return @@user_cache[mapped_un]
 				elsif config.default_username
 					mapped_un = config.default_username
-					@@user_cache[mapped_un] = (@@rally_ds.find(:user, :workspace => @@workspace) { equal :user_name, mapped_un }).results.first if @@user_cache[mapped_un].nil?
+					
+					uq = RallyAPI::RallyQuery.new()
+					uq.type = :user
+					uq.workspace = @@workspace
+					uq.query_string = "(UserName = \"#{mapped_un}\")"
+
+					@@user_cache[mapped_un] = (@@rally_ds.find(uq)).results.first if @@user_cache[mapped_un].nil?
 					return @@user_cache[mapped_un]
 				end
 			end
@@ -174,12 +192,12 @@ module ArtifactMigration
 					#  		    end
 
 					owner = map_user(project.owner)
-					newp = @@rally_ds.create(:project, :name => project.name, :description => project.description, :state => project.state, :owner => owner, :workspace => @@workspace)
+					newp = @@rally_ds.create(:project, {"Name" => project.name, "Description" => project.description, "State" => project.state, "Owner" => owner, "Workspace" => @@workspace})
 					#Logger.debug newp
 					if newp
-						project.target_object_i_d = newp.object_i_d
+						project.target_object_i_d = newp["ObjectID"]
 						st = ActiveRecord::Base.connection.raw_connection.prepare("UPDATE projects SET target_object_i_d=? WHERE source_object_i_d=?")
-						st.execute(newp.object_i_d.to_s.to_i, project.source_object_i_d)
+						st.execute(newp["ObjectID"].to_s.to_i, project.source_object_i_d)
 						st.close
 
 						ImportTransactionLog.create(:object_i_d => project.source_object_i_d, :transaction_type => 'import')
@@ -199,73 +217,77 @@ module ArtifactMigration
 
 			emit :begin_update_project_parents, ArtifactMigration::Project.count
 			ArtifactMigration::Project.all.each do |project|
-				if project.source_parent_i_d
+				if project.source_parent_i_d and project.source_parent_i_d.to_i > 0
 					parent = map_project project.source_parent_i_d
 					child = map_project project.source_object_i_d
-					child.update :parent => parent
-					Logger.debug "Updated Parent Project for #{project.name}"
+					uchild = @@rally_ds.update(:project, child["ObjectID"], {"Parent" => parent})
+					Logger.debug "Updated Parent Project for #{uchild}"
 				end
 
 				emit :loop
 			end
 			emit :end_update_project_parents
 
-			ret = Helper.batch_toolkit :url => config.server,
+			if config.migrate_project_permissions_flag
+				ret = Helper.batch_toolkit :url => config.server,
+					:username => config.username,
+					:password => config.password,
+					:version => config.version,
+					:workspace => config.workspace_oid,
+					:project_scope_up => config.project_scope_up,
+					:project_scope_down => config.project_scope_down,
+					:type => :workspace_permission,
+					:fields => %w(ObjectID User Role Workspace UserName Name).to_set
+
+				wpmapping = ret["Results"].collect { |wp| "#{wp['Workspace']['ObjectID']}_#{wp['User']['UserName']}" }
+				Logger.debug "WPMapping - #{wpmapping}"
+
+				ret = Helper.batch_toolkit :url => config.server,
 				:username => config.username,
 				:password => config.password,
 				:version => config.version,
 				:workspace => config.workspace_oid,
 				:project_scope_up => config.project_scope_up,
 				:project_scope_down => config.project_scope_down,
-				:type => :workspace_permission,
-				:fields => %w(ObjectID User Role Workspace UserName Name).to_set
+				:type => :project_permission,
+				:fields => %w(ObjectID User Role Project UserName Name).to_set
 
-			wpmapping = ret["Results"].collect { |wp| "#{wp['Workspace']['ObjectID']}_#{wp['User']['UserName']}" }
-			Logger.debug "WPMapping - #{wpmapping}"
+				mapping = ret["Results"].collect { |pp| "#{pp['Project']['ObjectID']}_#{pp['User']['UserName']}" }
+				Logger.debug "PPMapping - #{mapping.size} - #{mapping}"
 
-			ret = Helper.batch_toolkit :url => config.server,
-			:username => config.username,
-			:password => config.password,
-			:version => config.version,
-			:workspace => config.workspace_oid,
-			:project_scope_up => config.project_scope_up,
-			:project_scope_down => config.project_scope_down,
-			:type => :project_permission,
-			:fields => %w(ObjectID User Role Project UserName Name).to_set
+				emit :begin_import_project_permissions, ArtifactMigration::ProjectPermission.count
+				ArtifactMigration::ProjectPermission.all.each do |pp|
+					newp = map_project pp.project_i_d
+					user = map_user pp.user
 
-			mapping = ret["Results"].collect { |pp| "#{pp['Project']['ObjectID']}_#{pp['User']['UserName']}" }
-			Logger.debug "PPMapping - #{mapping.size} - #{mapping}"
+					next unless newp
+					next if mapping.include? "#{newp['ObjectID']}_#{pp.user}"
 
-			emit :begin_import_project_permissions, ArtifactMigration::ProjectPermission.count
-			ArtifactMigration::ProjectPermission.all.each do |pp|
-				newp = map_project pp.project_i_d
-				user = map_user pp.user
+					unless wpmapping.include? "#{config.workspace_oid}_#{pp.user}"
+						role = ArtifactMigration::WorkspacePermission.find_by_workspace_i_d_and_user(Configuration.singleton.source_config.workspace_oid, pp.user).role
+						Logger.debug "Adding Workspace Permission for #{pp.user} of #{role}"
+						@@rally_ds.create(:workspacepermission, "Workspace" => @@workspace, "User" => user, "Role" => role)
+						wpmapping << "#{config.workspace_oid}_#{pp.user}"
+					else
+						Logger.debug "User #{pp.user} is already in WOID #{config.workspace_oid}"
+					end
 
-				next unless newp
-				next if mapping.include? "#{newp.object_i_d}_#{pp.user}"
+					unless mapping.include? "#{newp["ObjectID"]}_#{user["UserName"]}"
+						perm = @@rally_ds.create(:projectpermission, "Project" => newp, "User" => user, "Role" => pp.role)
+						Logger.debug perm
+			  Logger.info "Migrated Project Permission for user #{user["UserName"]} for project #{newp["Name"]}"
+						emit :imported_project_permission, pp.project_i_d, pp.user
+					else
+			  Logger.info "Skipped Project Permission for user #{user["UserName"]} for project #{newp["Name"]}"
+						emit :imported_project_permission_skipped, pp.project_i_d, pp.user
+					end
 
-				unless wpmapping.include? "#{config.workspace_oid}_#{pp.user}"
-					role = ArtifactMigration::WorkspacePermission.find_by_workspace_i_d_and_user(Configuration.singleton.source_config.workspace_oid, pp.user).role
-					Logger.debug "Adding Workspace Permission for #{pp.user} of #{role}"
-					@@rally_ds.create(:workspace_permission, :workspace => @@workspace, :user => user, :role => role)
-				else
-					Logger.debug "User #{pp.user} is already in WOID #{config.workspace_oid}"
+					emit :loop
 				end
 
-				unless mapping.include? "#{newp.object_i_d}_#{user.user_name}"
-					perm = @@rally_ds.create(:project_permission, :project => newp, :user => user, :role => pp.role)
-					Logger.debug perm
-					emit :imported_project_permission, pp.project_i_d, pp.user
-				else
-					emit :imported_project_permission_skipped, pp.project_i_d, pp.user
-				end
-
-				emit :loop
+				#switch_user_default_workspace_and_project @@rally_ds.user, old_ws, old_p
+				emit :end_import_project_permissions
 			end
-
-			#switch_user_default_workspace_and_project @@rally_ds.user, old_ws, old_p
-			emit :end_import_project_permissions
-
 		end
 
 		def self.import_type(type)
@@ -360,12 +382,19 @@ module ArtifactMigration
 					end
 
 					attrs.delete_if { |k, v| v.nil? }
+					attrs.delete :id
+
+					# RallyRestAPI => RallyAPI
+					nattrs = {}
+					attrs.each { |k, v| nattrs[k.to_s.camelize] = v }
+					oattrs = attrs
+					attrs = nattrs
 
 					if valid
 
-						begin
+#						begin
 							if artifact_exists
-								Logger.debug "Updating #{attrs[:name]} for project '#{attrs[:project]}' in workspace '#{attrs[:workspace]}'"
+								Logger.debug "Updating #{oattrs[:name]} for project '#{oattrs[:project]}' in workspace '#{oattrs[:workspace]}'"
 								Logger.debug "#{attrs}"
 								artifact = @@object_manager.get_mapped_artifact obj.object_i_d
 								Logger.debug "Artifact hash - #{artifact.to_hash}"
@@ -373,21 +402,23 @@ module ArtifactMigration
 								Logger.debug "Artifact hash updated - #{artifact.to_hash}"
 								Logger.info "Updated #{type.to_s.humanize}: #{artifact.name}"
 							else
-								Logger.debug "Creating #{attrs[:name]} for project '#{attrs[:project]}' in workspace '#{attrs[:workspace]}'"
+								Logger.debug "Creating #{oattrs[:name]} for project '#{oattrs[:project]}' in workspace '#{oattrs[:workspace]}'"
 								Logger.debug "#{type}"
 								Logger.debug "#{attrs}"
-								artifact = @@rally_ds.create(type, attrs)
-								Logger.info "Created #{type.to_s.humanize}: #{artifact.name}"
+								artifact = @@rally_ds.create(type.to_s.gsub("_", "").to_sym, attrs)
+								Logger.debug "Done... #{artifact}"
+								Logger.info "Created #{type.to_s.humanize}: #{artifact}"
 
-								@@object_manager.map_artifact obj.object_i_d, artifact.object_i_d, artifact
+								@@object_manager.map_artifact obj.object_i_d, artifact["ObjectID"], artifact
 								ImportTransactionLog.create(:object_i_d => obj.object_i_d, :transaction_type => 'import')
 							end
+=begin
 						rescue Exception => e1
 							begin
 								unless artifact_exists
 									Logger.debug e1
-									Logger.debug "[WITHOUT DESCRIPTION] Creating #{attrs[:name]} for project '#{attrs[:project]}' in workspace '#{attrs[:workspace]}'"
-									attrs.delete :description
+									Logger.debug "[WITHOUT DESCRIPTION] Creating #{attrs["Name"]} for project '#{attrs["Project"]}' in workspace '#{attrs["Workspace"]}'"
+									attrs.delete "Description"
 									Logger.debug "#{attrs}"
 									artifact = @@rally_ds.create(type, attrs)
 									Logger.info "[WITHOUT DESCRIPTION] Created #{type.to_s.humanize}: #{artifact.name}"
@@ -400,7 +431,7 @@ module ArtifactMigration
 								begin
 									unless artifact_exists
 										Logger.debug e2
-										Logger.debug "[SHELL] Creating #{attrs[:name]} for project '#{attrs[:project]}' in workspace '#{attrs[:workspace]}'"
+										Logger.debug "[SHELL] Creating #{attrs["Name"]} for project '#{attrs["Project"]}' in workspace '#{attrs["Workspace"]}'"
 
 										attrs_shell = {
 											:name => attrs[:name], 
@@ -423,6 +454,7 @@ module ArtifactMigration
 								end
 							end
 						end
+=end
 						emit :imported_artifact, type, artifact
 					end
 				else
@@ -445,7 +477,7 @@ module ArtifactMigration
 
 						if new_story_parent
 							Logger.debug "Updating parent for '#{new_story}' to '#{new_story_parent}'"
-							new_story.update(:parent => new_story_parent)
+							@@rally_ds.update(:hierarchicalrequirement, new_story["ObjectID"], "Parent" => new_story_parent)
 							ImportTransactionLog.create(:object_i_d => story.object_i_d, :transaction_type => 'reparent')
 
 							emit :reparent, new_story
@@ -544,16 +576,16 @@ module ArtifactMigration
 				klass.all.each do |obj|
 					artifact_id = get_mapped_id obj.object_i_d
 					Logger.debug "Looking at #{artifact_id} to update status"
-					res = @@rally_ds.find(type, :workspace => @@workspace) { equal :object_i_d, artifact_id }
+					res = @@rally_ds.read(type.to_s.gsub("_", "").to_sym, artifact_id)
 					if res
-						artifact = res.first
+						artifact = res
 						if artifact
 							obj_state = (type == :task) ? obj.state : obj.schedule_state
-							art_state = (type == :task) ? artifact.state : artifact.schedule_state
+							art_state = (type == :task) ? artifact["State"] : artifact["ScheduleState"]
 							if art_state != obj_state
-								unless artifact.children
+								unless artifact["Children"]
 									Logger.info "#{artifact}'s schedule state is being updated"
-									artifact.update((type == :task ? :state : :schedule_state) => obj_state)
+									artifact.update((type == :task ? "State" : "ScheduleState") => obj_state)
 
 									emit :artifact_status_updated, artifact
 								end
@@ -821,6 +853,38 @@ module ArtifactMigration
 			prefs.update(:default_workspace => old_ws, :default_project => old_p)
 		end
 
+    def self.import_attachments_ws
+      Logger.debug "Importing Attachments with the WSAPI"
+
+			emit :begin_attachment_import, ArtifactMigration::Attachment.count
+			ArtifactMigration::Attachment.all.each do |attachment|
+				source_aid = attachment.artifact_i_d
+				att_id = attachment.object_i_d
+
+				next if ImportTransactionLog.readonly.where("object_i_d = ? AND transaction_type = ?", att_id, 'import').exists?
+
+				file_name = File.join('Attachments', "#{source_aid}", "#{att_id}")
+
+        content = @@rally_ds.create(:attachmentcontent, {
+          "Content" => Base64.encode(File.read(file_name)),
+          "Workspace" => @@workspace
+        })
+
+        att = @@rally_ds.create(:attachment, {
+          "Name" => attachment.name,
+          "Description" => attachment.description,
+          "ContentType" => attachment.content_type,
+          "Content" => content,
+          "Size" => File.size(file_name),
+          "Artifact" => @@object_manager.get_mapped_artifact(artifact.artifact_i_d),
+          "User" => map_user(attachment.user_name)
+        })
+
+        Logger.debug "Created Attachment #{att}"
+				emit :loop
+      end
+			emit :end_attachment_import
+    end
 
 		def self.fix_test_sets
 			ArtifactMigration::RallyArtifacts::TestSet.all.each do |test_set|
@@ -866,20 +930,23 @@ module ArtifactMigration
 				next if ImportTransactionLog.readonly.where("object_i_d = ? AND transaction_type = ?", att_id, 'import').exists?
 
 				file_name = File.join('Attachments', "#{source_aid}", "#{att_id}")
-				Logger.debug "Begin upload for #{file_name} || #{target_aid.object_i_d}"
+				Logger.debug "Begin upload for #{file_name} || #{target_aid['ObjectID']}"
 
 				byte_content = File.read(file_name)
 				content_string = Base64.encode64(byte_content)
 
-				content = @@rally_ds.create(:attachment_content, :content => content_string)
+				content = @@rally_ds.create(:attachmentcontent, 
+                                    "Content" => content_string,
+                                    "Workspace" => @@workspace
+        )
 				@@rally_ds.create( :attachment, 
-								  :workspace => @@workspace,
-								  :name => attachment.name,
-								  :description => attachment.description,
-								  :content => content,
-								  :artifact => target_aid,
-								  :content_type => attachment.content_type,
-								  :size => byte_content.length)
+								  :Workspace => @@workspace,
+								  :Name => attachment.name,
+								  :Description => attachment.description,
+								  :Content => content,
+								  :Artifact => target_aid,
+								  :ContentType => attachment.content_type,
+								  :Size => byte_content.length)
 
 				ImportTransactionLog.create(:object_i_d => att_id, :transaction_type => 'import')
 
