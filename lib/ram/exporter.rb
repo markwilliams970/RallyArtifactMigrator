@@ -216,7 +216,7 @@ module ArtifactMigration
 				:type => :project,
 				:fields => %w(ObjectID Name Owner Description Parent State UserName).to_set
 
-      projects = Hash[ ret['Results'].collect { |elt| [elt['ObjectID'], elt] } ]
+			projects = Hash[ ret['Results'].collect { |elt| [elt['ObjectID'], elt] } ]
 			c.project_oids.each do |poid|
 				Logger.info("Exporting Project Info for Project OID [#{poid}]")					
 				p = projects[poid]

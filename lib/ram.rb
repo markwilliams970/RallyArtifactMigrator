@@ -6,10 +6,8 @@ require 'rally_rest_api'
 require 'active_record'
 require 'require_all'
 
-require_all "#{File.dirname(__FILE__)}/ram/**/*.rb"
-
 module ArtifactMigration
-	extend ActiveSupport::Autoload
+  #extend ActiveSupport::Autoload
 	
 	EE_TYPES = [:tag, :release, :iteration, :hierarchical_requirement, :defect, :defect_suite, :test_case, :test_case_step, :test_case_result, :task].to_set
 	UE_TYPES = [:test_set, :test_folder, :portfolio_item].to_set + ArtifactMigration::EE_TYPES
@@ -23,34 +21,12 @@ module ArtifactMigration
 	INTEGRATION_HEADER.vendor = "Rally Software"
 	INTEGRATION_HEADER.name = "Rally Artifact Migrator"
 	INTEGRATION_HEADER.version = ArtifactMigration::VERSION
-=begin
-	eager_autoload do
-		autoload :ConfigurationDefinition
-		autoload :Configuration
-		autoload :Validator
-		autoload :Runner
-		autoload :Logger
-		autoload :Helper
-		autoload :Schema
-		autoload :Importer
-		autoload :Exporter
-		autoload :ProjectExporter
-		autoload :ProgressBar
-		autoload :CLI
-		autoload :ObjectManager
-		
-		autoload_under 'models' do
-			autoload :ImportTransactionLog
-			autoload :IssueTransactionLog
-			autoload :ObjectCache
-			autoload :ObjectIdMap
-			autoload :ObjectTypeMap
-			autoload :RallyArtifacts
-		end
-			
-		autoload :DatabaseConnection
-	end
-=end
+
+  class ExporterManager
+    
+  end
 end
+
+require_all "#{File.dirname(__FILE__)}/ram/**/*.rb"
 
 #require 'artifact_migration/bootstrap'
