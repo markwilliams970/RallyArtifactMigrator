@@ -36,6 +36,7 @@ module ArtifactMigration
 				update_test_folder_parents if config.migration_types.include?(type) and type == :test_folder
 			end
 
+			update_rank
 			update_artifact_statuses
 
 			if config.migrate_attachments_flag
@@ -63,6 +64,7 @@ module ArtifactMigration
 			rconfig[:username] = config.username
 			rconfig[:password] = config.password
 			rconfig[:version] = config.version
+			rconfig[:retries] = 2
 			rconfig[:headers] = ArtifactMigration::INTEGRATION_HEADER
 			rconfig[:logger] = ::Logger.new("rallydev.log")
 			rconfig[:debug] = false
@@ -120,10 +122,10 @@ module ArtifactMigration
 			new_oid = config.project_mapping.has_key?(old_oid.to_i) ? config.project_mapping[old_oid.to_i] : config.default_project_oid
 			project = nil
 
-      unless new_oid
-        pmap = Project.find_by_source_object_i_d(old_oid)
-        new_oid = pmap.target_object_i_d if pmap
-      end
+			unless new_oid
+				pmap = Project.find_by_source_object_i_d(old_oid)
+				new_oid = pmap.target_object_i_d if pmap
+			end
 			Logger.debug "Map Project - #{old_oid} => #{new_oid}"
 
 			if new_oid
@@ -275,10 +277,10 @@ module ArtifactMigration
 					unless mapping.include? "#{newp["ObjectID"]}_#{user["UserName"]}"
 						perm = @@rally_ds.create(:projectpermission, "Project" => newp, "User" => user, "Role" => pp.role)
 						Logger.debug perm
-			  Logger.info "Migrated Project Permission for user #{user["UserName"]} for project #{newp["Name"]}"
+						Logger.info "Migrated Project Permission for user #{user["UserName"]} for project #{newp["Name"]}"
 						emit :imported_project_permission, pp.project_i_d, pp.user
 					else
-			  Logger.info "Skipped Project Permission for user #{user["UserName"]} for project #{newp["Name"]}"
+						Logger.info "Skipped Project Permission for user #{user["UserName"]} for project #{newp["Name"]}"
 						emit :imported_project_permission_skipped, pp.project_i_d, pp.user
 					end
 
@@ -334,7 +336,7 @@ module ArtifactMigration
 						end
 					end
 
-					if klass.column_names.include? 'tags'
+					if klass.column_names.include? 'tags' and c.migration_types.include? :tag
 						tags = []
 						Logger.debug "Object tags: #{obj.tags}"
 						unless obj.tags.nil?
@@ -350,7 +352,7 @@ module ArtifactMigration
 
 					if type == :defect_suite
 						defects = []
-						obj.defects.each do |defect_id|
+						JSON.parse(obj.defects).each do |defect_id|
 							defect = @@object_manager.get_mapped_artifact defect_id
 							defects << defect if defect
 						end
@@ -493,6 +495,59 @@ module ArtifactMigration
 			end
 		end
 
+		def self.update_rank
+			artifacts = []
+			c = Configuration.singleton.target_config
+
+			[:hierarchical_requirement, :defect, :defect_suite, :portfolio_item].each do |k|
+				next unless c.migration_types.include? k
+
+				klass = ArtifactMigration::RallyArtifacts.get_artifact_class(k)
+				Logger.debug "Re-Ranking class #{k} with #{klass.all.count} items"
+
+				artifacts = artifacts.concat(klass.all)
+			end
+
+			artifacts.sort_by! { |o| o[:rank].to_f }
+
+			emit :begin_update_artifact_rank, artifacts.count
+			Logger.debug "Re-Ranking #{artifacts.count} artifacts"
+
+			last_artifact = nil
+			artifacts.each do |a|
+				unless last_artifact
+					last_artifact = a
+					next
+				end
+
+				a1 = @@object_manager.get_mapped_artifact a.object_i_d
+				a2 = @@object_manager.get_mapped_artifact last_artifact.object_i_d
+
+				otmap1 = ObjectTypeMap.find_by_object_i_d(a.object_i_d)
+				otmap2 = ObjectTypeMap.find_by_object_i_d(last_artifact.object_i_d)
+
+				stmap1 = ObjectIdMap.find_by_source_id a.object_i_d.to_i
+				stmap2 = ObjectIdMap.find_by_source_id last_artifact.object_i_d.to_i
+
+				#ja1 = @@rally_ds.read(otmap1.artifact_type.to_s.camelize, stmap1.target_id)
+				#ja2 = @@rally_ds.read(otmap2.artifact_type.to_s.camelize, stmap2.target_id)
+
+				ja1 = @@rally_ds.read(:artifact, stmap1.target_id)
+				ja2 = @@rally_ds.read(:artifact, stmap2.target_id)
+				
+				Logger.debug "#{ja1}"
+				Logger.debug "#{ja2}"
+
+				Logger.debug "Ranking '#{a.name}' below '#{last_artifact.name}'"
+				@@rally_ds.rank_below(ja1["_ref"], ja2["_ref"])
+				last_artifact = a
+
+				emit :loop
+			end
+
+			emit :end_update_artifact_rank
+		end
+
 		def self.update_story_parents
 			return unless ArtifactMigration::RallyArtifacts::HierarchicalRequirement.column_names.include? 'parent'
 			Logger.info "Updating Story Parents"
@@ -541,7 +596,7 @@ module ArtifactMigration
 
 						if preds.size > 0
 							Logger.debug "Updating predecessors for '#{new_story}'"
-							new_story.update(:predecessors => preds)
+							new_story.update("Predecessors" => preds)
 							ImportTransactionLog.create(:object_i_d => story.object_i_d, :transaction_type => 'predecessors')
 
 							emit :story_predecessors_updated, story
@@ -566,6 +621,7 @@ module ArtifactMigration
 			config = Configuration.singleton.target_config
 
 			[:hierarchical_requirement, :defect, :defect_suite].reverse.each do |type|
+				next unless config.migration_types.include? type
 				Logger.info "Updating statuses for #{type.to_s.humanize}" if config.migration_types.include? type
 
 				klass = ArtifactMigration::RallyArtifacts.get_artifact_class(type)

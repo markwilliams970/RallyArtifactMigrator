@@ -16,7 +16,7 @@ else
 end
 
 module ArtifactMigration
-	class ConfigurationDefinition		
+	class ConfigurationDefinition
 		attr_accessor :username
 		attr_accessor :password
 		attr_accessor :server
@@ -101,7 +101,7 @@ module ArtifactMigration
 		end
 
 		def migrate_project_permissions
-			@migrate_project_permissions = true
+			@migrate_project_permissions_flag = true
 		end
 		
 		def map_project_oid(options = {})
@@ -124,9 +124,9 @@ module ArtifactMigration
 				@username_mapping[user[from_column]] = user[to_column]
 			end
 		end
-		
-		def map_projects_by_yaml(filename)
-		  YAML.load(File.open filename).each { |k, v| map_project_id :from => k, :to => v }
-	  end
+
+    def map_projects_by_yaml(filename)
+      YAML.load(File.open filename).each { |k, v| map_project_id :from => k, :to => v }
+    end
 	end
 end

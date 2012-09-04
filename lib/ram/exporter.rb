@@ -86,7 +86,13 @@ module ArtifactMigration
 				Logger.debug "Checking for type #{type} - #{c.migration_types.include? type}"
 				if c.migration_types.include? type
 					emit :begin_type_export, type
-					export_type type 
+
+					if [:release, :iteration, :hierarchical_requirement, :defect, :defect_suite, :task, :test_case, :portfolio_item].include? type
+						export_project_type type 
+					else
+						export_workspace_type type
+					end
+
 					emit :end_type_export, type
 				end
 			end
@@ -113,7 +119,7 @@ module ArtifactMigration
 				Schema.drop_all_artifact_tables
 
 				Schema.create_artifact_schemas
-        Schema.create_attachments_list_schema
+				Schema.create_attachments_list_schema
 				Schema.create_object_type_map_schema
 				Schema.create_project_scheme
 				Schema.create_attachment_schema
@@ -168,92 +174,112 @@ module ArtifactMigration
 			emit :export_preperation_complete
 		end
 
-		def self.export_type(type)
+		def self.export_project_type(type)
 			klass = ArtifactMigration::RallyArtifacts.get_artifact_class(type)
 			c = Configuration.singleton.source_config
-
 			Logger.info("Exporting #{type} with class [#{klass}]")
 
 			c.project_oids.each do |poid|
+				export_type(type, c.workspace_oid, poid)
+			end
+		end
+
+		def self.export_workspace_type(type)
+			klass = ArtifactMigration::RallyArtifacts.get_artifact_class(type)
+			c = Configuration.singleton.source_config
+			Logger.info("Exporting #{type} with class [#{klass}]")
+
+			export_type(type, c.workspace_oid, nil)
+		end
+
+		def self.export_type(type, woid, poid)
+			klass = ArtifactMigration::RallyArtifacts.get_artifact_class(type)
+			c = Configuration.singleton.source_config
+
+			if (poid)
 				Logger.info("Searching Project #{poid}")
 				emit :exporting, type, poid
+			else
+				Logger.info("Searching Workspace #{woid}")
+				emit :exporting, type, woid
+			end
 
-				if %w(HierarchicalRequirement Defect DefectSuite Task TestCase PortfolioItem).include? type
-					query = "(LastUpdateDate >= #{@@last_update.utc.iso8601.to_s})"
-				else
-					query = ""
-				end
 
-				ret = Helper.batch_toolkit :url => c.server,
-					:username => c.username,
-					:password => c.password,
-					:version => c.version,
-					:workspace => c.workspace_oid,
-					:project => poid,
-					:project_scope_up => c.project_scope_up,
-					:project_scope_down => c.project_scope_down,
-					:type => type,
-					:query => query,
+			if %w(HierarchicalRequirement Defect DefectSuite Task TestCase PortfolioItem).include? type
+				query = "(LastUpdateDate >= #{@@last_update.utc.iso8601.to_s})"
+			else
+				query = ""
+			end
+
+			ret = Helper.batch_toolkit :url => c.server,
+				:username => c.username,
+				:password => c.password,
+				:version => c.version,
+				:workspace => woid,
+				:project => poid,
+				:project_scope_up => c.project_scope_up,
+				:project_scope_down => c.project_scope_down,
+				:type => type,
+				:query => query,
 				:fields => @@rw_attrs[type.to_s.classify] + %w(UserName).to_set
 
-				Logger.info("Found #{ret['Results'].size} #{type.to_s.humanize}")
+			Logger.info("Found #{ret['Results'].size} #{type.to_s.humanize}")
 
-				ret["Results"].each do |o|
-					attrs = {}
-					artifact = nil
+			ret["Results"].each do |o|
+				attrs = {}
+				artifact = nil
 
-					o.each do |k, v| 
-						if %w(Project PortfolioItem Requirement WorkProduct TestCase Defect DefectSuite TestFolder Parent TestCaseResult Iteration Release TestSet).include? k
-							attrs[k.to_s.underscore.to_sym] = v["ObjectID"] if v
-						elsif %w(PreliminaryEstimate PortfolioItemType).include? k # TODO: Make generic
-							if (type == :portfolio_item)
-								Logger.debug "Transforming #{k} - #{v['Name']}" unless v.nil?
-								attrs[k.to_s.underscore.to_sym] = v['Name'] unless v.nil?
-								Logger.debug "#{k.to_s.underscore.to_sym} => #{attrs[k.to_s.underscore.to_sym]}"
-							end
-						elsif %w(Owner SubmittedBy).include? k
-							attrs[k.to_s.underscore.to_sym] = v["UserName"] if v
-						elsif %w(Tags Predecessors Successors TestCases Duplicates).include? k
-							rels = []
-							v.each do |t|
-								rels.push t['ObjectID']
-							end if v
+				o.each do |k, v| 
+					if %w(Project PortfolioItem Requirement WorkProduct TestCase Defect DefectSuite TestFolder Parent TestCaseResult Iteration Release TestSet).include? k
+						attrs[k.to_s.underscore.to_sym] = v["ObjectID"] if v
+					elsif %w(PreliminaryEstimate PortfolioItemType).include? k # TODO: Make generic
+						if (type == :portfolio_item)
+							Logger.debug "Transforming #{k} - #{v['Name']}" unless v.nil?
+							attrs[k.to_s.underscore.to_sym] = v['Name'] unless v.nil?
+							Logger.debug "#{k.to_s.underscore.to_sym} => #{attrs[k.to_s.underscore.to_sym]}"
+						end
+					elsif %w(Owner SubmittedBy).include? k
+						attrs[k.to_s.underscore.to_sym] = v["UserName"] if v
+					elsif %w(Tags Predecessors Successors TestCases Duplicates).include? k
+						rels = []
+						v.each do |t|
+							rels.push t['ObjectID']
+						end if v
 
-							attrs[k.to_s.underscore.to_sym] = rels.to_json
-            elsif %w(Attachments).include? k
-              Logger.debug "Found Attachments - #{v}" if v.size > 0
-              v.each do |attach|
-                if AttachmentsList.find_by_object_i_d(attach["ObjectID"]).nil?
-                  AttachmentsList.create(:object_i_d => attach["ObjectID"], :artifact_i_d => o["ObjectID"])
-                  Logger.debug "Adding Attachment - #{attach}"
-                end
-              end
-						else
-							if v.class == Hash
-								if v.has_key? "LinkID"
-									attrs[k.to_s.underscore.to_sym] = v.to_json if klass.column_names.include? k.to_s.underscore 
-								end
-							else
-								attrs[k.to_s.underscore.to_sym] = v.to_s if klass.column_names.include? k.to_s.underscore 
+						attrs[k.to_s.underscore.to_sym] = rels.to_json
+					elsif %w(Attachments).include? k
+						Logger.debug "Found Attachments - #{v}" if v.size > 0
+						v.each do |attach|
+							if AttachmentsList.find_by_object_i_d(attach["ObjectID"]).nil?
+								AttachmentsList.create(:object_i_d => attach["ObjectID"], :artifact_i_d => o["ObjectID"])
+								Logger.debug "Adding Attachment - #{attach}"
 							end
 						end
-					end
-
-					c.ignore_fields[type].each { |a| attrs.delete a } if c.ignore_fields.has_key? type
-
-					attrs[:object_i_d] = o["ObjectID"]
-					#Logger.debug(attrs)
-					unless klass.find_by_object_i_d(o['ObjectID'].to_i).nil?
-						artifact = klass.find_by_object_i_d(o['ObjectID'].to_i)
-						artifact.update_attributes(attrs)
 					else
-						artifact = klass.create(attrs)
-						ObjectTypeMap.create(:object_i_d => artifact.object_i_d, :artifact_type => type.to_s) if artifact and ObjectTypeMap.find_by_object_i_d(artifact.object_i_d).nil?
+						if v.class == Hash
+							if v.has_key? "LinkID"
+								attrs[k.to_s.underscore.to_sym] = v.to_json if klass.column_names.include? k.to_s.underscore 
+							end
+						else
+							attrs[k.to_s.underscore.to_sym] = v.to_s if klass.column_names.include? k.to_s.underscore 
+						end
 					end
-
-					emit :artifact_exported, artifact
-					Logger.debug(artifact.attributes) if artifact
 				end
+
+				c.ignore_fields[type].each { |a| attrs.delete a } if c.ignore_fields.has_key? type
+
+				attrs[:object_i_d] = o["ObjectID"]
+				#Logger.debug(attrs)
+				unless klass.find_by_object_i_d(o['ObjectID'].to_i).nil?
+					artifact = klass.find_by_object_i_d(o['ObjectID'].to_i)
+					artifact.update_attributes(attrs)
+				else
+					artifact = klass.create(attrs)
+					ObjectTypeMap.create(:object_i_d => artifact.object_i_d, :artifact_type => type.to_s) if artifact and ObjectTypeMap.find_by_object_i_d(artifact.object_i_d).nil?
+				end
+
+				emit :artifact_exported, artifact
+				Logger.debug(artifact.attributes) if artifact
 			end
 		end
 
