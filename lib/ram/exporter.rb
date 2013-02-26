@@ -70,8 +70,8 @@ module ArtifactMigration
 			rconfig[:password] = c.password
 			rconfig[:version] = c.version
 			rconfig[:headers] = ArtifactMigration::INTEGRATION_HEADER
-			rconfig[:logger] = ::Logger.new("rallydev.log")
-			rconfig[:debug] = false
+			rconfig[:logger] = ::Logger.new("rallydev.exporter.log")
+			rconfig[:debug] = true
 			
 			@@rally_ds = RallyAPI::RallyRestJson.new rconfig
 			@@workspace = { "_ref" => "#{c.server}/webservice/#{c.version}/workspace/#{c.workspace_oid}.js" }

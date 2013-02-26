@@ -52,8 +52,8 @@ module ArtifactMigration
 
 		def self.prepare      
 			ArtifactMigration::Schema.create_transaction_log_schema
-			ArtifactMigration::Schema.create_issue_log_schema			
-			ArtifactMigration::Schema.create_object_id_map_schema			
+			ArtifactMigration::Schema.create_issue_log_schema
+			ArtifactMigration::Schema.create_object_id_map_schema
 			ArtifactMigration::Schema.create_object_cache_schema
 
 			config = Configuration.singleton.target_config
@@ -66,8 +66,8 @@ module ArtifactMigration
 			rconfig[:version] = config.version
 			rconfig[:retries] = 2
 			rconfig[:headers] = ArtifactMigration::INTEGRATION_HEADER
-			rconfig[:logger] = ::Logger.new("rallydev.log")
-			rconfig[:debug] = false
+			rconfig[:logger] = ::Logger.new("rallydev.importer.log")
+			rconfig[:debug] = true
 			
 			@@rally_ds = RallyAPI::RallyRestJson.new rconfig
 			@@workspace = { "_ref" => "#{config.server}/webservice/#{config.version}/workspace/#{config.workspace_oid}.js" }
@@ -118,6 +118,10 @@ module ArtifactMigration
 		end
 
 		def self.map_project(old_oid)
+			if old_oid.to_s.to_i <= 0
+				return nil
+			end
+
 			config = Configuration.singleton.target_config
 			new_oid = config.project_mapping.has_key?(old_oid.to_i) ? config.project_mapping[old_oid.to_i] : config.default_project_oid
 			project = nil
@@ -187,11 +191,6 @@ module ArtifactMigration
 				unless ImportTransactionLog.readonly.where("object_i_d = ? AND transaction_type = ?", project.source_object_i_d, 'import').exists?
 					new_oid = config.project_mapping[project.source_object_i_d]
 					next if new_oid
-
-					#  			  if project.target_object_i_d
-					#  			    config.map_project_oid :from => project.source_object_i_d, :to => project.target_object_i_d
-					#  			    next
-					#  		    end
 
 					owner = map_user(project.owner)
 					newp = @@rally_ds.create(:project, {"Name" => project.name, "Description" => project.description, "State" => project.state, "Owner" => owner, "Workspace" => @@workspace})

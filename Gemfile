@@ -13,7 +13,7 @@ group :development do
 #  gem "rspec", ">= 2"
 end
 
-gem "rally_api", "> 0.5"
+gem "rally_api", ">= 0.5.2"
 gem "multi_json", '~> 1.0'
 gem 'i18n', "~> 0.6.0"
 

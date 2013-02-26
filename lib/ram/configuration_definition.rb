@@ -36,6 +36,7 @@ module ArtifactMigration
 		attr_reader :ignore_fields
 		attr_reader :field_mapping
 		attr_reader :username_mapping
+		attr_reader :artifact_mapping
 		attr_reader :migrate_attachments_flag
 		attr_reader :migrate_projects_flag
 		attr_reader :migrate_child_projects_flag
@@ -55,6 +56,7 @@ module ArtifactMigration
 			@field_mapping = {}
 			@migrate_projects_flag = false
 			@default_project_oid = nil
+			@artifact_mapping = {}
 		end
 				
 		def ignore_field(type, field_name)
@@ -114,6 +116,10 @@ module ArtifactMigration
 		
 		def map_username_by_regex(options = {})
 		end
+
+		def map_artifact(options = {})
+			@artifact_mapping[options[:from]] = { :type => options[:type], :oid => options[:to] }
+		end
 		
 		def map_username_by_csv(options = {})
 			from_column = options[:from]
@@ -125,8 +131,8 @@ module ArtifactMigration
 			end
 		end
 
-    def map_projects_by_yaml(filename)
-      YAML.load(File.open filename).each { |k, v| map_project_id :from => k, :to => v }
-    end
+		def map_projects_by_yaml(filename)
+			YAML.load(File.open filename).each { |k, v| map_project_id :from => k, :to => v }
+		end
 	end
 end

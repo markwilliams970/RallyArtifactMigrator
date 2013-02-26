@@ -25,34 +25,6 @@ module ArtifactMigration
 	INTEGRATION_HEADER.name = "Rally Artifact Migrator"
 	INTEGRATION_HEADER.version = ArtifactMigration::VERSION
 	
-=begin
-	eager_autoload do
-		autoload :ConfigurationDefinition
-		autoload :Configuration
-		autoload :Validator
-		autoload :Runner
-		autoload :Logger
-		autoload :Helper
-		autoload :Schema
-		autoload :Importer
-		autoload :Exporter
-		autoload :ProjectExporter
-		autoload :ProgressBar
-		autoload :CLI
-		autoload :ObjectManager
-		
-		autoload_under 'models' do
-			autoload :ImportTransactionLog
-			autoload :IssueTransactionLog
-			autoload :ObjectCache
-			autoload :ObjectIdMap
-			autoload :ObjectTypeMap
-			autoload :RallyArtifacts
-		end
-			
-		autoload :DatabaseConnection
-	end
-=end
 end
 
 #require 'artifact_migration/bootstrap'

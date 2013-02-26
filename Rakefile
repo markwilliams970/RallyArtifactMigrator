@@ -25,7 +25,7 @@ Jeweler::Tasks.new do |gem|
 	
 	gem.add_runtime_dependency 'multi_json', '~> 1.0'
 	gem.add_runtime_dependency 'i18n', "~> 0.6.0"
-	gem.add_runtime_dependency 'rally_api', "> 0.5"
+	gem.add_runtime_dependency 'rally_api', ">= 0.5.2"
 	['activesupport', 'activemodel', 'activerecord', 'actionpack'].each {|d| gem.add_runtime_dependency d, "~> 3.1.0"}
 	['require_all', 'sqlite3', 'rake', 'trollop', 'rest-client', 'rainbow', 'json_pure', 'events', 'fastercsv', 'options', "highline"].each do |d|
 	  gem.add_runtime_dependency d
