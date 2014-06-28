@@ -66,6 +66,21 @@ module ArtifactMigration
 				@@last_update = Time.local(2000, "jan", 1)
 			end
 
+			c = Configuration.singleton.source_config
+			c.version = ArtifactMigration::RALLY_API_VERSION if c.version.nil? or c.version.empty?
+
+			rconfig = {}
+			rconfig[:base_url] = c.server
+			rconfig[:username] = c.username
+			rconfig[:password] = c.password
+			rconfig[:version] = c.version
+			rconfig[:headers] = ArtifactMigration::INTEGRATION_HEADER
+			rconfig[:logger] = ::Logger.new("rallydev.exporter.log")
+			rconfig[:debug] = true
+			
+			@@rally_ds = RallyAPI::RallyRestJson.new rconfig
+			@@workspace = { "_ref" => "#{c.server}/webservice/#{c.version}/workspace/#{c.workspace_oid}.js" }
+
 			emit :begin_export
 
 			if c.migrate_projects_flag

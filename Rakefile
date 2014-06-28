@@ -22,7 +22,7 @@ Jeweler::Tasks.new do |gem|
   gem.authors = ["Colin O'Brien, Mark Williams"]
   # Include your dependencies below. Runtime dependencies are required when using your gem,
   # and development dependencies are only needed for development (ie running rake tasks, tests, etc)
-	
+
 	# gem.add_runtime_dependency 'multi_json', '~> 1.10.1'
 	# gem.add_runtime_dependency 'i18n', "~> 0.6.0"
 	# gem.add_runtime_dependency 'rally_api', ">= 0.5.2"
