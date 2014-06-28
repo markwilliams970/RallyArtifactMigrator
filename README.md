@@ -53,6 +53,9 @@ map_username :from => <STRING>, :to => <STRING>      | Map a username in the sou
 * PI States are not migrated
 * DynaTypes are not supported
 
+=== 0.6.6
+* [REFACTOR] Updated to use rally_api - removed all usage of adhoc. Updated default WSAPI version to 1.43
+
 === 0.6.5
 * [FEATURE] Added option to target configuration 'map_artifact' that take the form `target.map_artifact :type => :RALLY_TYPE_NAME, :from => 1111, :to => 2222`
 
