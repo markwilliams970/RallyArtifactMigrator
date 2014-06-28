@@ -43,10 +43,23 @@ module ArtifactMigration
 		def self.verify_source_config
 			@@log.info("=========Validating Source Configuration=========")
 			config = Configuration.singleton.source_config
+
 			valid = verify_connection config
 			return false unless valid
-			
-			source = RallyRestAPI.new :username => config.username, :password => config.password, :base_url => config.server, :version => ArtifactMigration::RALLY_API_VERSION, :http_headers => ArtifactMigration::INTEGRATION_HEADER
+
+            headers                          = RallyAPI::CustomHttpHeader.new()
+            headers.name                     = "Rally Artifact Migrator"
+            headers.vendor                   = "Rally Software"
+            headers.version                  = ArtifactMigration::VERSION
+
+            rallyapi_config                  = {:base_url => config.server}
+            rallyapi_config[:username]       = config.username
+            rallyapi_config[:password]       = config.password
+            rallyapi_config[:headers]        = headers #from RallyAPI::CustomHttpHeader.new()
+            rallyapi_config[:version]        = ArtifactMigration::RALLY_API_VERSION
+
+            source                           = RallyAPI::RallyRestJson.new(rallyapi_config)
+
 			ws = ArtifactMigration::Helper.find_workspace(source, config.workspace_oid)
 			@@log.info("---------Validating Project OIDs----------------")
 			config.project_oids.each do |oid|
@@ -63,9 +76,26 @@ module ArtifactMigration
 			config_s = Configuration.singleton.source_config
 			valid = verify_connection config_t
 			return false unless valid
-			
-			source = RallyRestAPI.new :username => config_s.username, :password => config_s.password, :base_url => config_s.server, :version => ArtifactMigration::RALLY_API_VERSION, :http_headers => ArtifactMigration::INTEGRATION_HEADER
-			target = RallyRestAPI.new :username => config_t.username, :password => config_t.password, :base_url => config_t.server, :version => ArtifactMigration::RALLY_API_VERSION, :http_headers => ArtifactMigration::INTEGRATION_HEADER
+
+            headers                                 = RallyAPI::CustomHttpHeader.new()
+            headers.name                            = "Rally Artifact Migrator"
+            headers.vendor                          = "Rally Software"
+            headers.version                         = ArtifactMigration::VERSION
+
+            rallyapi_config_source                  = {:base_url => config_s.server}
+            rallyapi_config_source[:username]       = config_s.username
+            rallyapi_config_source[:password]       = config_s.password
+            rallyapi_config_source[:headers]        = headers #from RallyAPI::CustomHttpHeader.new()
+            rallyapi_config_source[:version]        = ArtifactMigration::RALLY_API_VERSION
+            source                                  = RallyAPI::RallyRestJson.new(rallyapi_config_source)
+
+            rallyapi_config_target                  = {:base_url => config_t.server}
+            rallyapi_config_target[:username]       = config_t.username
+            rallyapi_config_target[:password]       = config_t.password
+            rallyapi_config_target[:headers]        = headers #from RallyAPI::CustomHttpHeader.new()
+            rallyapi_config_target[:version]        = ArtifactMigration::RALLY_API_VERSION
+            target                                  = RallyAPI::RallyRestJson.new(rallyapi_config_target)
+
 			ws_s = ArtifactMigration::Helper.find_workspace(source, config_s.workspace_oid)
 			ws_t = ArtifactMigration::Helper.find_workspace(target, config_t.workspace_oid)
 			
@@ -87,17 +117,24 @@ module ArtifactMigration
 			valid &&= assert("Validating workspace_oid is defined") { !config.workspace_oid.nil? }
 			
 			return false unless valid
-			
-			@@rally = RallyRestAPI.new :username => config.username, :password => config.password, :base_url => config.server, :version => ArtifactMigration::RALLY_API_VERSION, :http_headers => ArtifactMigration::INTEGRATION_HEADER
-			valid &&= assert("Validating user is authenticated") { !@@rally.user.nil? }
-			
-			valid &&= assert("Validating subscription has Rally Quality Manager enabled") { not (@@rally.user.subscription.modules.to_s =~ /Quality/).nil? } if (config.migration_types.include? :test_folder) or (config.migration_types.include? :test_set)
-			valid &&= assert("Validating subscription has Rally Product Manager enabled") { not (@@rally.user.subscription.modules.to_s =~ /Product/).nil? } if (config.migration_types.include? :portfolio_item)
+
+            headers                          = RallyAPI::CustomHttpHeader.new()
+            headers.name                     = "Rally Artifact Migrator"
+            headers.vendor                   = "Rally Labs"
+            headers.version                  = ArtifactMigration::VERSION
+
+            rallyapi_config                  = {:base_url => config.server}
+            rallyapi_config[:username]       = config.username
+            rallyapi_config[:password]       = config.password
+            rallyapi_config[:headers]        = headers #from RallyAPI::CustomHttpHeader.new()
+            rallyapi_config[:version]        = ArtifactMigration::RALLY_API_VERSION
+
+            @@rally                          = RallyAPI::RallyRestJson.new(rallyapi_config)
 
 			ws = ArtifactMigration::Helper.find_workspace(@@rally, config.workspace_oid)
 			valid &&= assert("Validating a workspace was found") { !ws.nil? }
-			valid &&= assert("Validating supplied workspace_oid is valid") { ws.object_i_d.to_i == config.workspace_oid } if valid
-			
+			valid &&= assert("Validating supplied workspace_oid is valid") { ws["ObjectID"].to_i == config.workspace_oid } if valid
+
 			config.migration_types.each do |type|
 				valid &&= assert("Validating #{type.to_s.titleize} is a valid type") { ArtifactMigration::UE_TYPES.include? type }
 			end

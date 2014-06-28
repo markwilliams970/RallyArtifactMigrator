@@ -42,7 +42,7 @@ class Array
 
     return '' if columns.empty?
 
-    writer = RUBY_VERSION >= "1.9.0" ? CSV : FasterCSV
+    writer = CSV
 
     output = writer.generate(csv_options) do |csv|
       csv << columns.map { |column| klass.human_attribute_name(column) } unless options[:headers] == false

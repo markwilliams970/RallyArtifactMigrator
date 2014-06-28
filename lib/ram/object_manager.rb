@@ -19,7 +19,14 @@ module ArtifactMigration
 			return nil unless verify_connected_to_rally
 			return nil unless old_id
 			Logger.debug "ObjectManager::get_mapped_artifact - Begin"
-			
+
+			c = Configuration.singleton.target_config
+
+			if c.artifact_mapping.has_key? old_id
+				item = c.artifact_mapping[old_oid]
+				return Helper.create_ref(item[:type].to_s.gsub("_", ""), item[:oid])
+			end
+
 			stmap = ObjectIdMap.find_by_source_id old_id.to_i
 			return nil unless stmap
 

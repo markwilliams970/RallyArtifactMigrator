@@ -45,6 +45,11 @@ module ArtifactMigration
 		end
 		
 		def self.run
+
+            c = Configuration.singleton.source_config
+            c.version = ArtifactMigration::RALLY_API_VERSION if c.version.nil? or c.version.empty?
+
+            puts "Commencing export process..."
 			@@start_time = Time.now
 
 			DatabaseConnection.ensure_database_connection
@@ -61,24 +66,10 @@ module ArtifactMigration
 				@@last_update = Time.local(2000, "jan", 1)
 			end
 
-			c = Configuration.singleton.source_config
-			c.version = ArtifactMigration::RALLY_API_VERSION if c.version.nil? or c.version.empty?
-
-			rconfig = {}
-			rconfig[:base_url] = c.server
-			rconfig[:username] = c.username
-			rconfig[:password] = c.password
-			rconfig[:version] = c.version
-			rconfig[:headers] = ArtifactMigration::INTEGRATION_HEADER
-			rconfig[:logger] = ::Logger.new("rallydev.log")
-			rconfig[:debug] = false
-			
-			@@rally_ds = RallyAPI::RallyRestJson.new rconfig
-			@@workspace = { "_ref" => "#{c.server}/webservice/#{c.version}/workspace/#{c.workspace_oid}.js" }
-
 			emit :begin_export
 
 			if c.migrate_projects_flag
+                puts "Exporting projects..."
 				self.export_projects
 			end
 
@@ -87,10 +78,12 @@ module ArtifactMigration
 				if c.migration_types.include? type
 					emit :begin_type_export, type
 
-					if [:release, :iteration, :hierarchical_requirement, :defect, :defect_suite, :task, :test_case, :portfolio_item].include? type
+					if [:release, :iteration, :hierarchicalrequirement, :defect, :defectsuite, :task, :testcase, :portfolioitem].include? type
+                        puts "Exporting #{type}s at project-scope..."
 						export_project_type type 
-					else
-						export_workspace_type type
+                    else
+                        puts "Exporting #{type}s at workspace-scope..."
+                        export_workspace_type type
 					end
 
 					emit :end_type_export, type
@@ -113,6 +106,23 @@ module ArtifactMigration
 		end
 
 		def self.prepare
+
+            c = Configuration.singleton.source_config
+            c.version = ArtifactMigration::RALLY_API_VERSION if c.version.nil? or c.version.empty?
+
+            rconfig = {}
+            rconfig[:base_url] = c.server
+            rconfig[:username] = c.username
+            rconfig[:password] = c.password
+            rconfig[:version] = c.version
+            rconfig[:headers] = ArtifactMigration::INTEGRATION_HEADER
+            rconfig[:logger] = ::Logger.new("rallydev.exporter.log")
+            rconfig[:debug] = true
+
+            @@rally_ds = RallyAPI::RallyRestJson.new rconfig
+            @@workspace = { "_ref" => "#{c.server}/webservice/#{c.version}/workspace/#{c.workspace_oid}.js" }
+
+            puts "Preparing schema..."
 			Schema.create_options_schema
 
 			unless @@update_existing
@@ -130,12 +140,16 @@ module ArtifactMigration
 			@@rw_attrs = {}
 
 			c = Configuration.singleton.source_config
-			ret = Helper.batch_toolkit :url => c.server,
+
+            workspace = Helper.find_workspace(@@rally_ds, c.workspace_oid)
+            workspace_name = workspace["Name"]
+
+			ret = Helper.rally_api :url => c.server,
 				:username => c.username,
 				:password => c.password,
 				:version => c.version,
-				:workspace => c.workspace_oid,
-				:type => :type_definition,
+				:workspace => workspace_name,
+				:type => :typedefinition,
 				:fields => %w(Abstract Attributes DisplayName ElementName Name Note Parent)
 
 			ret['Results'].each do |r| 
@@ -143,17 +157,18 @@ module ArtifactMigration
 					attrs[r['ElementName']] = [].to_set unless attrs[r['ElementName']]
 					attrs[r['ElementName']] << a['Name'].gsub(' ', '')
 
-					@@rw_attrs[r['ElementName']] = [].to_set unless @@rw_attrs[r['ElementName']]
-					@@rw_attrs[r['ElementName']] << a['Name'].gsub(' ', '') unless a['ReadOnly']
+					@@rw_attrs[r['ElementName'].downcase] = [].to_set unless @@rw_attrs[r['ElementName']]
+					@@rw_attrs[r['ElementName'].downcase] << a['Name'].gsub(' ', '') unless a['ReadOnly']
 				end
 			end
 
 			#if c.version.to_f < 1.27
 			%w(HierarchicalRequirement Defect DefectSuite Task TestCase TestSet).each do |wp|
 				Logger.debug "Updating Attributes for type #{wp}"
+                puts "Updating Attributes for type #{wp}"
 
-				if (@@rw_attrs.has_key? wp)
-					@@rw_attrs[wp] = @@rw_attrs[wp] + %w(Name Notes Owner Tags Package Description FormattedID Project Attachments).to_set
+				if (@@rw_attrs.has_key? wp.downcase)
+					@@rw_attrs[wp.downcase] = @@rw_attrs[wp.downcase] + %w(Name Notes Owner Tags Package Description FormattedID Project Attachments).to_set
 				end
 			end
 			#end
@@ -161,8 +176,8 @@ module ArtifactMigration
 			#@@rw_attrs['Task'] = @@rw_attrs['Task'] + %w(Project).to_set
 
 			%w(HierarchicalRequirement Defect DefectSuite Task TestCase TestSet).each do |wp|
-				if @@rw_attrs.has_key? wp
-					@@rw_attrs[wp] = @@rw_attrs[wp] - %w(Successors).to_set
+				if @@rw_attrs.has_key? wp.downcase
+					@@rw_attrs[wp.downcase] = @@rw_attrs[wp.downcase] - %w(Successors).to_set
 				end
 			end
 
@@ -171,6 +186,7 @@ module ArtifactMigration
 			@@rw_attrs.each { |k, v| Logger.debug "Type #{k} has columns #{k}" }
 			@@rw_attrs.each { |k, v| Schema.update_schema_for_artifact(k.underscore.to_sym, v)}
 
+            puts "Schema Preparation complete..."
 			emit :export_preperation_complete
 		end
 
@@ -193,10 +209,17 @@ module ArtifactMigration
 		end
 
 		def self.export_type(type, woid, poid)
+            puts "Exporting #{type}s..."
 			klass = ArtifactMigration::RallyArtifacts.get_artifact_class(type)
 			c = Configuration.singleton.source_config
 
+            workspace = Helper.find_workspace(@@rally_ds, woid)
+            workspace_name = workspace["Name"]
+
+            project_name = nil
 			if (poid)
+                project           = Helper.find_project(@@rally_ds, workspace, poid)
+                project_name      = project["Name"]
 				Logger.info("Searching Project #{poid}")
 				emit :exporting, type, poid
 			else
@@ -209,21 +232,35 @@ module ArtifactMigration
 				query = "(LastUpdateDate >= #{@@last_update.utc.iso8601.to_s})"
 			else
 				query = ""
-			end
+            end
 
-			ret = Helper.batch_toolkit :url => c.server,
-				:username => c.username,
-				:password => c.password,
-				:version => c.version,
-				:workspace => woid,
-				:project => poid,
-				:project_scope_up => c.project_scope_up,
-				:project_scope_down => c.project_scope_down,
-				:type => type,
-				:query => query,
-				:fields => @@rw_attrs[type.to_s.classify] + %w(UserName).to_set
+            if (poid)
+                ret = Helper.rally_api :url => c.server,
+                    :username => c.username,
+                    :password => c.password,
+                    :version => c.version,
+                    :workspace => workspace_name,
+                    :project => project_name,
+                    :project_scope_up => c.project_scope_up,
+                    :project_scope_down => c.project_scope_down,
+                    :type => type,
+                    :query => query,
+                    :fields => @@rw_attrs[type.to_s] + %w(UserName).to_set
+            else
+                ret = Helper.rally_api :url => c.server,
+                   :username => c.username,
+                   :password => c.password,
+                   :version => c.version,
+                   :workspace => workspace_name,
+                   :project_scope_up => c.project_scope_up,
+                   :project_scope_down => c.project_scope_down,
+                   :type => type,
+                   :query => query,
+                   :fields => @@rw_attrs[type.to_s] + %w(UserName).to_set
+            end
 
-			Logger.info("Found #{ret['Results'].size} #{type.to_s.humanize}")
+			Logger.info("Found #{ret['Results'].total_result_count} #{type.to_s.humanize}")
+            puts "Found #{ret['Results'].total_result_count} #{type.to_s.humanize}"
 
 			ret["Results"].each do |o|
 				attrs = {}
@@ -233,7 +270,7 @@ module ArtifactMigration
 					if %w(Project PortfolioItem Requirement WorkProduct TestCase Defect DefectSuite TestFolder Parent TestCaseResult Iteration Release TestSet).include? k
 						attrs[k.to_s.underscore.to_sym] = v["ObjectID"] if v
 					elsif %w(PreliminaryEstimate PortfolioItemType).include? k # TODO: Make generic
-						if (type == :portfolio_item)
+						if (type == :portfolioitem)
 							Logger.debug "Transforming #{k} - #{v['Name']}" unless v.nil?
 							attrs[k.to_s.underscore.to_sym] = v['Name'] unless v.nil?
 							Logger.debug "#{k.to_s.underscore.to_sym} => #{attrs[k.to_s.underscore.to_sym]}"
@@ -275,7 +312,7 @@ module ArtifactMigration
 					artifact.update_attributes(attrs)
 				else
 					artifact = klass.create(attrs)
-					ObjectTypeMap.create(:object_i_d => artifact.object_i_d, :artifact_type => type.to_s) if artifact and ObjectTypeMap.find_by_object_i_d(artifact.object_i_d).nil?
+					ObjectTypeMap.create(:object_i_d => artifact['ObjectID'], :artifact_type => type.to_s) if artifact and ObjectTypeMap.find_by_object_i_d(artifact.object_i_d).nil?
 				end
 
 				emit :artifact_exported, artifact
@@ -305,17 +342,29 @@ module ArtifactMigration
 
 			c = Configuration.singleton.source_config
 
-			ret = Helper.batch_toolkit :url => c.server,
+            workspace = Helper.find_workspace(@@rally_ds, c.workspace_oid)
+            workspace_name = workspace["Name"]
+
+			ret = Helper.rally_api :url => c.server,
 				:username => c.username,
 				:password => c.password,
 				:version => c.version,
-				:workspace => c.workspace_oid,
+				:workspace => workspace_name,
 				:project_scope_up => c.project_scope_up,
 				:project_scope_down => c.project_scope_down,
 				:type => :project,
 				:fields => %w(ObjectID Name Owner Description Parent State UserName).to_set
 
-			projects = Hash[ ret['Results'].collect { |elt| [elt['ObjectID'], elt] } ]
+            results = ret['Results']
+
+            projects = {}
+            results.each do | this_project |
+                this_poid = this_project["ObjectID"].to_s
+                projects[this_poid] = this_project
+            end
+
+			#projects = Hash[ ret['Results'].collect { |elt| [elt['ObjectID'], elt] } ]
+            #puts projects
 
 			all_projects = [].concat c.project_oids.to_a
 			c.project_oids.each { |poid| all_projects << collect_child_projects(ret['Results'], poid.to_i) } if c.migrate_child_projects_flag
@@ -325,7 +374,8 @@ module ArtifactMigration
 			
 			c.project_oids.each do |poid|
 				Logger.info("Exporting Project Info for Project OID [#{poid}]")
-				p = projects[poid]
+                puts "Exporting Project Info for Project OID #{poid}"
+				p = projects[poid.to_s]
 
 				pp = nil
 				ppoid = -1
@@ -337,26 +387,26 @@ module ArtifactMigration
 			end
 
 			if c.migrate_project_permissions_flag
-				ret = Helper.batch_toolkit :url => c.server,
+				ret = Helper.rally_api :url => c.server,
 					:username => c.username,
 					:password => c.password,
 					:version => c.version,
-					:workspace => c.workspace_oid,
+					:workspace => workspace_name,
 					:project_scope_up => c.project_scope_up,
 					:project_scope_down => c.project_scope_down,
-					:type => :workspace_permission,
+					:type => :workspacepermission,
 					:fields => %w(ObjectID User Role Workspace UserName Name).to_set
 
 				ret["Results"].each { |wp| ArtifactMigration::WorkspacePermission.create(:workspace_i_d => wp["Workspace"]["ObjectID"], :user => wp["User"]["UserName"], :role => wp["Role"]) }
 
-				ret = Helper.batch_toolkit :url => c.server,
+				ret = Helper.rally_api :url => c.server,
 					:username => c.username,
 					:password => c.password,
 					:version => c.version,
-					:workspace => c.workspace_oid,
+					:workspace => workspace_name,
 					:project_scope_up => c.project_scope_up,
 					:project_scope_down => c.project_scope_down,
-					:type => :project_permission,
+					:type => :projectpermission,
 					:fields => %w(ObjectID User Role Project UserName Name).to_set
 
 				ret["Results"].each do |pp|
@@ -425,7 +475,7 @@ module ArtifactMigration
 			c.project_oids.each do |poid|
 				Logger.info("Exporting Attachments for Project OID [#{poid}]")
 
-				ret = Helper.batch_toolkit :url => c.server,
+				ret = Helper.rally_api :url => c.server,
 					:username => c.username,
 					:password => c.password,
 					:version => c.version,

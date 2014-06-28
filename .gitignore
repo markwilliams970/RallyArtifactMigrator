@@ -40,3 +40,13 @@ pkg
 #
 # For vim:
 #*.swp
+
+# Testing
+test_config.rb
+db/artifacts.sqlite
+active_record.log
+debug.log
+
+# OS and project files
+.DS_Store
+.idea

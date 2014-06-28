@@ -2,6 +2,12 @@
 
 require 'trollop'
 
+# ram Require needed for runtime (non-gem) testing
+require File.join(File.dirname(__FILE__), '..', '/lib/ram.rb')
+
+# Gem-based require
+#require 'ram'
+
 ARGV << "--help" if ARGV.size == 0
 
 opts = Trollop::options do
@@ -23,7 +29,6 @@ EOS
 end
 
 unless opts[:help]
-	require 'ram'
 
 	unless opts[:example_configuration]
 		config_file = ARGV[0]
@@ -32,10 +37,10 @@ unless opts[:help]
 			instance_eval File.read(config_file)
 			
 			if opts[:reset]
-			  print "Reseting transaction log... "
+			  print "Resetting transaction log... "
 			  ArtifactMigration::Exporter.reset_transaction_log
 			  puts "Transaction log reset"
-		  end
+            end
 
 			valid = true
 			valid &&= ArtifactMigration::CLI.run_verification unless opts[:skip_verification]

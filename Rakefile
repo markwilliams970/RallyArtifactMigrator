@@ -15,21 +15,22 @@ Jeweler::Tasks.new do |gem|
   # gem is a Gem::Specification... see http://docs.rubygems.org/read/chapter/20 for more options
   gem.name = "ram"
   gem.homepage = "https://sites.google.com/a/rallydev.com/the-wrack-zone/home/ruby-scripts"
-  #gem.license = "MIT"
+  gem.license = "MIT"
   gem.summary = %Q{Utility to Migrate Rally Artifacts}
   gem.description = %Q{Utility to Migrate Rally Artifacts}
-  gem.email = "cobrien@rallydev.com"
-  gem.authors = ["Colin O'Brien"]
+  gem.email = "mwilliams@rallydev.com"
+  gem.authors = ["Colin O'Brien, Mark Williams"]
   # Include your dependencies below. Runtime dependencies are required when using your gem,
   # and development dependencies are only needed for development (ie running rake tasks, tests, etc)
 	
-	gem.add_runtime_dependency 'multi_json', '~> 1.0'
-	gem.add_runtime_dependency 'i18n', "~> 0.6.0"
-	gem.add_runtime_dependency 'rally_api', "> 0.5"
-	['activesupport', 'activemodel', 'activerecord', 'actionpack'].each {|d| gem.add_runtime_dependency d, "~> 3.1.0"}
-	['require_all', 'sqlite3', 'rake', 'trollop', 'rest-client', 'rainbow', 'json_pure', 'events', 'fastercsv', 'options', "highline"].each do |d|
-	  gem.add_runtime_dependency d
-	end
+	# gem.add_runtime_dependency 'multi_json', '~> 1.10.1'
+	# gem.add_runtime_dependency 'i18n', "~> 0.6.0"
+	# gem.add_runtime_dependency 'rally_api', ">= 0.5.2"
+    #
+	# ['activesupport', 'activemodel', 'activerecord', 'actionpack'].each {|d| gem.add_runtime_dependency d, "~> 4.1.2"}
+	# ['require_all', 'sqlite3', 'rake', 'trollop', 'rest-client', 'rainbow', 'json_pure', 'events', 'options', "highline"].each do |d|
+	#     gem.add_runtime_dependency d
+	# end
 	
 	gem.files.include 'example_config.rb'
 	gem.files.include Dir.glob('lib/**/*.*')
