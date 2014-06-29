@@ -46,6 +46,8 @@ test_config.rb
 db/artifacts.sqlite
 active_record.log
 debug.log
+rallydev.exporter.log
+rallydev.importer.log
 
 # OS and project files
 .DS_Store
