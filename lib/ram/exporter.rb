@@ -172,10 +172,10 @@ module ArtifactMigration
 					attrs[r['ElementName']] = [].to_set unless attrs[r['ElementName']]
 					attrs[r['ElementName']] << a['Name'].gsub(' ', '')
 
-					@@rw_attrs[r['ElementName'].downcase] = [].to_set unless @@rw_attrs[r['ElementName']]
+					@@rw_attrs[r['ElementName'].downcase] = [].to_set unless @@rw_attrs[r['ElementName'].downcase]
 					@@rw_attrs[r['ElementName'].downcase] << a['Name'].gsub(' ', '') unless a['ReadOnly']
 				end
-			end
+            end
 
 			#if c.version.to_f < 1.27
 			%w(HierarchicalRequirement Defect DefectSuite Task TestCase TestSet).each do |wp|
@@ -198,8 +198,8 @@ module ArtifactMigration
 
 			#Logger.debug("Columns for TestSet are #{@@rw_attrs['TestSet']}")
 
-			@@rw_attrs.each { |k, v| Logger.debug "Type #{k} has columns #{k}" }
-			@@rw_attrs.each { |k, v| Schema.update_schema_for_artifact(k.underscore.to_sym, v)}
+			@@rw_attrs.each { |k, v| Logger.debug "Type #{k} has columns #{v}" }
+			@@rw_attrs.each { |k, v| Schema.update_schema_for_artifact(k.downcase.to_sym, v)}
 
             puts "Schema Preparation complete..."
 			emit :export_preperation_complete
@@ -281,42 +281,83 @@ module ArtifactMigration
 				attrs = {}
 				artifact = nil
 
-				o.each do |k, v| 
-					if %w(Project PortfolioItem Requirement WorkProduct TestCase Defect DefectSuite TestFolder Parent TestCaseResult Iteration Release TestSet).include? k
-						attrs[k.to_s.underscore.to_sym] = v["ObjectID"] if v
-					elsif %w(PreliminaryEstimate PortfolioItemType).include? k # TODO: Make generic
-						if (type == :portfolioitem)
-							Logger.debug "Transforming #{k} - #{v['Name']}" unless v.nil?
-							attrs[k.to_s.underscore.to_sym] = v['Name'] unless v.nil?
-							Logger.debug "#{k.to_s.underscore.to_sym} => #{attrs[k.to_s.underscore.to_sym]}"
-						end
-					elsif %w(Owner SubmittedBy).include? k
-						attrs[k.to_s.underscore.to_sym] = v["UserName"] if v
-					elsif %w(Tags Predecessors Successors TestCases Duplicates).include? k
-						rels = []
-						v.each do |t|
-							rels.push t['ObjectID']
-						end if v
+                k = o._type
+                # Elements is the attr accessor on rally_api's RallyObject that gets you an iterable
+                # hash of key,value pairs
+                elements = o.elements
+                elements.each do |k, v|
+                    if %w(Project PortfolioItem Requirement WorkProduct TestCase Defect DefectSuite TestFolder Parent TestCaseResult Iteration Release TestSet).include? k
+                        attrs[k.to_s.underscore.to_sym] = v["ObjectID"] if v
+                    elsif %w(PreliminaryEstimate PortfolioItemType).include? k # TODO: Make generic
+                        if (type == :portfolioitem)
+                            Logger.debug "Transforming #{k} - #{v['Name']}" unless v.nil?
+                            attrs[k.to_s.underscore.to_sym] = v['Name'] unless v.nil?
+                            Logger.debug "#{k.to_s.underscore.to_sym} => #{attrs[k.to_s.underscore.to_sym]}"
+                        end
+                    elsif %w(Owner SubmittedBy).include? k
+                        attrs[k.to_s.underscore.to_sym] = v["UserName"] if v
+                    elsif %w(Tags Predecessors Successors TestCases Duplicates).include? k
+                        rels = []
+                        v.each do |t|
+                            rels.push t['ObjectID']
+                        end if v
 
-						attrs[k.to_s.underscore.to_sym] = rels.to_json
-					elsif %w(Attachments).include? k
-						Logger.debug "Found Attachments - #{v}" if v.size > 0
-						v.each do |attach|
-							if AttachmentsList.find_by_object_i_d(attach["ObjectID"]).nil?
-								AttachmentsList.create(:object_i_d => attach["ObjectID"], :artifact_i_d => o["ObjectID"])
-								Logger.debug "Adding Attachment - #{attach}"
-							end
-						end
-					else
-						if v.class == Hash
-							if v.has_key? "LinkID"
-								attrs[k.to_s.underscore.to_sym] = v.to_json if klass.column_names.include? k.to_s.underscore 
-							end
-						else
-							attrs[k.to_s.underscore.to_sym] = v.to_s if klass.column_names.include? k.to_s.underscore 
-						end
-					end
-				end
+                        attrs[k.to_s.underscore.to_sym] = rels.to_json
+                    elsif %w(Attachments).include? k
+                        Logger.debug "Found Attachments - #{v}" if v.size > 0
+                        v.each do |attach|
+                            if AttachmentsList.find_by_object_i_d(attach["ObjectID"]).nil?
+                                AttachmentsList.create(:object_i_d => attach["ObjectID"], :artifact_i_d => o["ObjectID"])
+                                Logger.debug "Adding Attachment - #{attach}"
+                            end
+                        end
+                    else
+                        if v.class == Hash
+                            if v.has_key? "LinkID"
+                                attrs[k.to_s.underscore.to_sym] = v.to_json if klass.column_names.include? k.to_s.underscore
+                            end
+                        else
+                            attrs[k.to_s.underscore.to_sym] = v.to_s if klass.column_names.include? k.to_s.underscore
+                        end
+                    end
+                end
+
+				# o.each do |k, v|
+				# 	if %w(Project PortfolioItem Requirement WorkProduct TestCase Defect DefectSuite TestFolder Parent TestCaseResult Iteration Release TestSet).include? k
+				# 		attrs[k.to_s.underscore.to_sym] = v["ObjectID"] if v
+				# 	elsif %w(PreliminaryEstimate PortfolioItemType).include? k # TODO: Make generic
+				# 		if (type == :portfolioitem)
+				# 			Logger.debug "Transforming #{k} - #{v['Name']}" unless v.nil?
+				# 			attrs[k.to_s.underscore.to_sym] = v['Name'] unless v.nil?
+				# 			Logger.debug "#{k.to_s.underscore.to_sym} => #{attrs[k.to_s.underscore.to_sym]}"
+				# 		end
+				# 	elsif %w(Owner SubmittedBy).include? k
+				# 		attrs[k.to_s.underscore.to_sym] = v["UserName"] if v
+				# 	elsif %w(Tags Predecessors Successors TestCases Duplicates).include? k
+				# 		rels = []
+				# 		v.each do |t|
+				# 			rels.push t['ObjectID']
+				# 		end if v
+                #
+				# 		attrs[k.to_s.underscore.to_sym] = rels.to_json
+				# 	elsif %w(Attachments).include? k
+				# 		Logger.debug "Found Attachments - #{v}" if v.size > 0
+				# 		v.each do |attach|
+				# 			if AttachmentsList.find_by_object_i_d(attach["ObjectID"]).nil?
+				# 				AttachmentsList.create(:object_i_d => attach["ObjectID"], :artifact_i_d => o["ObjectID"])
+				# 				Logger.debug "Adding Attachment - #{attach}"
+				# 			end
+				# 		end
+				# 	else
+				# 		if v.class == Hash
+				# 			if v.has_key? "LinkID"
+				# 				attrs[k.to_s.underscore.to_sym] = v.to_json if klass.column_names.include? k.to_s.underscore
+				# 			end
+				# 		else
+				# 			attrs[k.to_s.underscore.to_sym] = v.to_s if klass.column_names.include? k.to_s.underscore
+				# 		end
+				# 	end
+				# end
 
 				c.ignore_fields[type].each { |a| attrs.delete a } if c.ignore_fields.has_key? type
 
@@ -508,9 +549,14 @@ module ArtifactMigration
 					if (art['Attachments'] and (art['Attachments'].size > 0))
 						Logger.info "#{art['Name']} [#{art['ObjectID']}] has #{art['Attachments'].size} Attachments"
 
-						artifact_res = @@rally_ds.find(:artifact, :fetch => true, :project => project, :project_scope_up => false, :project_scope_down => false) { equal :object_i_d, art['ObjectID'] }
+						artifact_res = @@rally_ds.find(
+                            :artifact, :fetch => true,
+                            :project => project,
+                            :project_scope_up => false,
+                            :project_scope_down => false) { equal :object_i_d, art['ObjectID'] }
 						Logger.debug "Found Artifact: #{artifact_res.results}"
-						artifact = artifact_res.results.first
+
+                        artifact = artifact_res.results.first
 
 						if artifact and artifact.attachments
 

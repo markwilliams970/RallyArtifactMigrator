@@ -20,7 +20,9 @@ module ArtifactMigration
 
 			import_projects if config.migrate_projects_flag
 
-			[:tag, :release, :iteration, :portfolio_item, :hierarchical_requirement, :test_folder, :test_case, :test_case_step, :test_set, :test_case_result, :defect, :defect_suite, :task].each do |type|
+			#[:tag, :release, :iteration, :portfolioitem, :hierarchicalrequirement, :testfolder, :testcase, :testcasestep, :testset, :testcaseresult, :defect, :defectsuite, :task].each do |type|
+            [:release, :iteration, :portfolioitem, :hierarchicalrequirement, :testfolder, :testcase, :testcasestep, :testset, :testcaseresult, :defect, :defectsuite, :task].each do |type|
+
 				Logger.info "Importing #{type.to_s.humanize}" if config.migration_types.include? type
 
 				if config.migration_types.include? type
@@ -299,8 +301,12 @@ module ArtifactMigration
 
 			emit :import_type_count, klass.count
 			klass.all.each do |obj|
+                puts obj.inspect
 				attrs = {}
-				obj.attributes.each { |k, v| attrs[map_field(type, k.to_sym)] = v }
+				obj.attributes.each { |k, v|
+                    attrs[map_field(type, k.to_sym)] = v
+                    puts "k,v #{k}, #{v}"
+                }
 
 				%w(object_i_d defects predecessors parent successors duplicates children test_cases tags project workspace release iteration work_product).each { |a| attrs.delete a.to_sym if attrs.has_key? a.to_sym }
 
@@ -312,18 +318,18 @@ module ArtifactMigration
 					attrs[:release] = @@object_manager.get_mapped_artifact obj.release                    if klass.column_names.include? 'release' #&& obj.release
 					attrs[:iteration] = @@object_manager.get_mapped_artifact obj.iteration                if klass.column_names.include? 'iteration' #&& obj.iteration
 					attrs[:project] = map_project obj.project                                             if klass.column_names.include? 'project' #&& obj.project
-					attrs[:work_product] = @@object_manager.get_mapped_artifact obj.work_product          if klass.column_names.include? 'work_product' #&& obj.work_product
+					attrs[:workproduct] = @@object_manager.get_mapped_artifact obj.work_product           if klass.column_names.include? 'workproduct' #&& obj.work_product
 					attrs[:requirement] = @@object_manager.get_mapped_artifact obj.requirement            if klass.column_names.include? 'requirement' #&& obj.requirement
-					attrs[:portfolio_item] = @@object_manager.get_mapped_artifact obj.portfolio_item      if klass.column_names.include? 'portfolio_item' #&& obj.requirement
-					attrs[:test_folder] = @@object_manager.get_mapped_artifact obj.test_folder            if klass.column_names.include? 'test_folder' #&& obj.test_case
-					attrs[:test_case] = @@object_manager.get_mapped_artifact obj.test_case                if klass.column_names.include? 'test_case' #&& obj.test_case
-					attrs[:test_case_result] = @@object_manager.get_mapped_artifact obj.test_case_result  if klass.column_names.include? 'test_case_result' #&& obj.test_case_result
-					attrs[:test_set] = @@object_manager.get_mapped_artifact obj.test_set                  if klass.column_names.include? 'test_set' #&& obj.test_case_result
+					attrs[:portfolioitem] = @@object_manager.get_mapped_artifact obj.portfolio_item       if klass.column_names.include? 'portfolioitem' #&& obj.requirement
+					attrs[:testfolder] = @@object_manager.get_mapped_artifact obj.test_folder             if klass.column_names.include? 'testfolder' #&& obj.test_case
+					attrs[:testcase] = @@object_manager.get_mapped_artifact obj.test_case                 if klass.column_names.include? 'testcase' #&& obj.test_case
+					attrs[:testcaseresult] = @@object_manager.get_mapped_artifact obj.test_case_result    if klass.column_names.include? 'testcaseresult' #&& obj.test_case_result
+					attrs[:testset] = @@object_manager.get_mapped_artifact obj.test_set                   if klass.column_names.include? 'testset' #&& obj.test_case_result
 					attrs[:owner] = map_user obj.owner                                                    if klass.column_names.include? 'owner' #&& obj.owner
 					attrs[:tester] = map_user obj.tester                                                  if klass.column_names.include? 'tester' #&& obj.tester
-					attrs[:submitted_by] = map_user obj.submitted_by                                      if klass.column_names.include? 'submitted_by' #&& obj.submitted_by
+					attrs[:submittedby] = map_user obj.submitted_by                                       if klass.column_names.include? 'submittedby' #&& obj.submitted_by
 
-					if type == :portfolio_item
+					if type == :portfolioitem
 						attrs[:portfolio_item_type] = find_portfolio_item_attribute(:type, attrs[:portfolio_item_type])                   if klass.column_names.include? 'preliminary_estimate'
 						attrs[:preliminary_estimate] = find_portfolio_item_attribute(:preliminary_estimate, attrs[:preliminary_estimate]) if klass.column_names.include? 'preliminary_estimate'
 					end
@@ -333,7 +339,9 @@ module ArtifactMigration
 							attrs[:plan_estimate] = obj.plan_estimate.to_f
 							attrs[:plan_estimate] = 999.0 if attrs[:plan_estimate] > 999.0
 						end
-					end
+                    end
+
+                    puts klass.column_names
 
 					if klass.column_names.include? 'tags' and c.migration_types.include? :tag
 						tags = []
@@ -349,7 +357,7 @@ module ArtifactMigration
 						end
 					end
 
-					if type == :defect_suite
+					if type == :defectsuite
 						defects = []
 						JSON.parse(obj.defects).each do |defect_id|
 							defect = @@object_manager.get_mapped_artifact defect_id
@@ -378,8 +386,8 @@ module ArtifactMigration
 						end
 					end
 
-					if [:test_case_result, :test_case_step].include? type
-						valid = (attrs.has_key? :test_case) && (attrs[:test_case] != nil)
+					if [:testcaseresult, :testcasestep].include? type
+						valid = (attrs.has_key? :testcase) && (attrs[:testcase] != nil)
 					end
 
 					attrs.delete_if { |k, v| v.nil? }
@@ -390,6 +398,8 @@ module ArtifactMigration
 					attrs.each { |k, v| nattrs[k.to_s.camelize] = v }
 					oattrs = attrs
 					attrs = nattrs
+
+                    puts oattrs
 
 					if valid
 
@@ -821,9 +831,9 @@ module ArtifactMigration
 				target_type = ArtifactMigration::ObjectTypeMap.find_by_object_i_d source_oid
 				case target_type
 				when 'defect' then 'df'
-				when 'hierarchical_requirement' then 'ar'
+				when 'hierarchicalrequirement' then 'ar'
 				when 'task' then 'tk'
-				when 'test_case' then 'tc'
+				when 'testcase' then 'tc'
 				end
 			end
 

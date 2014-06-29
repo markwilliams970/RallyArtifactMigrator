@@ -24,11 +24,12 @@ module ArtifactMigration
 		def self.create_artifact_classes
 			ArtifactMigration::UE_TYPES.each do |type|
 				klass = ArtifactMigration::RallyArtifacts.const_set(type.to_s.classify, Class.new(ActiveRecord::Base))
+                puts "type: #{type}"
 				klass.set_inheritance_column "inheritance_type"
 				#klass.const_set(:is_rally_artifact, true)
 			end
 			
-			Logger.debug("RallyArtifacts contants - #{ArtifactMigration::RallyArtifacts.constants}")
+			Logger.debug("RallyArtifacts constants - #{ArtifactMigration::RallyArtifacts.constants}")
 		end
 		
 		def self.create_artifact_association(parent, child, type = :one_to_many)
@@ -49,7 +50,7 @@ module ArtifactMigration
 				get_artifact_class(parent).has_many child, :through => a_klass_name.to_sym
 				get_artifact_class(child).has_many parent, :through => a_klass_name.to_sym
 			else
-				Logger.debug("Unknow association type: #{type}")
+				Logger.debug("Unknown association type: #{type}")
 			end
 		end
 		
