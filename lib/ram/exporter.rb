@@ -3,7 +3,6 @@ require 'base64'
 require 'events'
 require 'rally_api'
 require 'time'
-require 'rest_client'
 require 'json'
 
 =begin

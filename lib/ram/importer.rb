@@ -301,11 +301,9 @@ module ArtifactMigration
 
 			emit :import_type_count, klass.count
 			klass.all.each do |obj|
-                puts obj.inspect
 				attrs = {}
 				obj.attributes.each { |k, v|
                     attrs[map_field(type, k.to_sym)] = v
-                    puts "k,v #{k}, #{v}"
                 }
 
 				%w(object_i_d defects predecessors parent successors duplicates children test_cases tags project workspace release iteration work_product).each { |a| attrs.delete a.to_sym if attrs.has_key? a.to_sym }
